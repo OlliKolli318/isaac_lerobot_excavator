@@ -1,0 +1,12 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+dist/
+*.before_*.usd
+*.log
+splat.local.cmd
+/tests/
+simulation_dagger_graph.py
+simulation_graph.py
+splat_log_relocator.py
+splat_action_mux.py
