@@ -40,3 +40,8 @@ ROS 2-enabled environment:
 ```bat
 python -m pip install -e src\kaivuri_lerobot_bridge
 ```
+
+From the repository root, run `python -m pytest -q`, `python -m flake8`, and
+`python -m mypy`. The unit tests exercise action validation and DAgger leases
+without starting a ROS participant. Integration with Isaac still requires a
+separate simulation test.

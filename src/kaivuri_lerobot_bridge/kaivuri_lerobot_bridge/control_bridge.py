@@ -64,7 +64,7 @@ class ControlBridge(Node):
         self._simulation = source == "simulation"
         self._sim_time = None
         self._run_id = None
-        self._retired_runs = set()
+        self._retired_runs: set[str] = set()
         self._run_arrived_before_reset = False
         self._last_packet_ns = -1
         self._last_packet_wall = None
@@ -135,6 +135,11 @@ class ControlBridge(Node):
     def _new_watchdog(self, timeout_s: float) -> PolicyWatchdog:
         return PolicyWatchdog(timeout_s, self._safe_action, self._axis_count)
 
+    def _reset_policy(self) -> None:
+        self._watchdog = self._new_watchdog(self._watchdog.timeout_s)
+        self._last_packet_ns = -1
+        self._last_packet_wall = None
+
     def _on_dagger(self, msg):
         if not self._simulation:
             return
@@ -146,9 +151,7 @@ class ControlBridge(Node):
                 _, _, phase = decode_control(self._dagger.state)
                 self._enabled = phase in ("autonomous", "correcting", "armed")
                 self._policy_mode = phase == "autonomous"
-                self._watchdog = self._new_watchdog(self._watchdog.timeout_s)
-                self._last_packet_ns = -1
-                self._last_packet_wall = None
+                self._reset_policy()
             self._publish_tick()
         except ValueError as exc:
             self.get_logger().warning(str(exc))
@@ -163,8 +166,7 @@ class ControlBridge(Node):
                 self._retired_runs.add(self._run_id)
             self._run_arrived_before_reset = False
             self._run_id = None
-            self._watchdog = self._new_watchdog(self._watchdog.timeout_s)
-            self._last_packet_ns = -1
+            self._reset_policy()
         self._sim_time = now
 
     def _on_sample(self, msg):
@@ -177,8 +179,7 @@ class ControlBridge(Node):
                 stamp = msg.header.stamp.sec + msg.header.stamp.nanosec / 1e9
                 self._run_arrived_before_reset = self._sim_time is not None and stamp < self._sim_time
             self._run_id = run_id
-            self._watchdog = self._new_watchdog(self._watchdog.timeout_s)
-            self._last_packet_ns = -1
+            self._reset_policy()
 
     def _on_stamped_policy(self, msg):
         if not self._simulation or self._sim_time is None or not self._run_id:
@@ -244,9 +245,9 @@ class ControlBridge(Node):
 
     def _publish_tick(self) -> None:
         selection = self._watchdog.select(self._now(), self._enabled, self._policy_mode)
-        command = Float32MultiArray()
-        command.data = list(selection.action)
         if not self._simulation:
+            command = Float32MultiArray()
+            command.data = list(selection.action)
             self._scene_action_pub.publish(command)
         self._simulation_pub.publish(Bool(data=self._simulation))
         self._manual_mode_pub.publish(Bool(data=not self._policy_mode))
@@ -281,9 +282,13 @@ class ControlBridge(Node):
 
 def main() -> None:
     rclpy.init()
-    node = ControlBridge()
+    node = None
     try:
+        node = ControlBridge()
         rclpy.spin(node)
     finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        try:
+            if node is not None:
+                node.destroy_node()
+        finally:
+            rclpy.shutdown()

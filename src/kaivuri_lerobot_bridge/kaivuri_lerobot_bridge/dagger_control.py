@@ -1,10 +1,17 @@
 """ROS-independent HIL ownership/phase protocol. Host time is only a lease."""
+import math
+
+
 PHASES = {"idle": 0, "autonomous": 1, "paused": 2, "correcting": 3, "off": 4, "armed": 5}
 
 
 def decode_control(value):
-    session, generation, phase = str(value).split(":")
-    session, generation = int(session), int(generation)
+    try:
+        session_text, generation_text, phase = str(value).split(":")
+        session, generation = int(session_text), int(generation_text)
+    except (TypeError, ValueError):
+        # ROS rejection logs must not echo arbitrary incoming payloads.
+        raise ValueError("Invalid DAgger control state") from None
     if not 0 < session < 2**52 or not 0 <= generation < 2**31 or phase not in PHASES:
         raise ValueError("Invalid DAgger control state")
     return session, generation, phase
@@ -12,12 +19,16 @@ def decode_control(value):
 
 class DaggerLease:
     def __init__(self, timeout_s=2.0):
+        if not math.isfinite(timeout_s) or timeout_s <= 0:
+            raise ValueError("timeout_s must be positive and finite")
         self.timeout_s = timeout_s
         self.state = ""
         self.last_seen = -float("inf")
         self.retired = set()
 
     def accept(self, value, now):
+        if not math.isfinite(now) or now < self.last_seen:
+            raise ValueError("Lease time must be finite and monotonic")
         session, generation, phase = decode_control(value)
         if session in self.retired:
             return False
@@ -41,7 +52,7 @@ class DaggerLease:
         session, generation, phase = decode_control(self.state)
         if phase == "off":
             return ""
-        if now - self.last_seen > self.timeout_s:
+        if not math.isfinite(now) or not 0 <= now - self.last_seen <= self.timeout_s:
             # Keep ownership and hold until a new generation is requested.
             return f"{session}:{generation}:idle"
         return self.state
