@@ -1,10 +1,12 @@
 """Dispatch the splat scene command-line tools."""
-import os
+import importlib
 import json
+import os
 from pathlib import Path
 import sys
+from typing import List
 
-_dll_handles = []
+_dll_handles: List[object] = []
 if sys.platform == 'win32':
     for folder in [Path(sys.executable).parent / 'Library/bin']:
         if folder.is_dir():
@@ -21,6 +23,11 @@ def check_policy(path):
     print('PASS: checkpoint dimensions are state=5, action=5. Camera names and action semantics must also match training.')
 
 
+def _default_option(name, value):
+    if not any(arg.startswith(name + '=') for arg in sys.argv[1:]):
+        sys.argv.append(f'{name}={value}')
+
+
 def main():
     if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
         print('Usage: splat_tools.cmd {bridge|record|rollout|dagger|dagger-aggregate|episode-preview|train|ros2|check|check-policy} [arguments]')
@@ -28,8 +35,7 @@ def main():
         return
     command = sys.argv.pop(1)
     if command == 'dagger':
-        if not any(arg.startswith('--strategy.type=') for arg in sys.argv):
-            sys.argv.append('--strategy.type=dagger')
+        _default_option('--strategy.type', 'dagger')
         if '--strategy.type=dagger' not in sys.argv:
             raise SystemExit('The dagger command requires --strategy.type=dagger.')
         command = 'rollout'
@@ -46,44 +52,43 @@ def main():
     # the same process-local Fast DDS profile as Isaac Sim.
     from simulation_transport import configure_simulation_transport
     configure_simulation_transport()
+    if command in ('check', 'record', 'rollout', 'dagger-aggregate', 'train'):
+        # Load ROS and OpenCV before torch/LeRobot to avoid the Windows DLL conflict.
+        for module in ('rclpy', 'cv2'):
+            importlib.import_module(module)
     if command == 'check':
-        import rclpy
-        import cv2
         from kaivuri_lerobot_bridge import control_bridge
         from lerobot_robot_isaac_excavator import kaivuri_record
         from lerobot_robot_isaac_excavator import kaivuri_rollout
+        for module in ('simulation_dagger', 'dagger_aggregate'):
+            importlib.import_module('lerobot_robot_isaac_excavator.' + module)
         print('PASS: ROS2, OpenCV, simulation bridge, recorder, rollout, DAgger and aggregation import successfully.')
         print('Recorder:', kaivuri_record.__file__)
         print('Bridge:', control_bridge.__file__)
         print('Rollout:', kaivuri_rollout.__file__)
         return
-    if command in ('record', 'rollout', 'dagger-aggregate', 'train'):
-        # Load ROS and OpenCV before torch/LeRobot to avoid the Windows DLL conflict.
-        import rclpy
-        import cv2
     if command == 'bridge':
         from kaivuri_lerobot_bridge.control_bridge import main as run
     elif command == 'record':
-        if not any(arg.startswith('--dataset.push_to_hub=') for arg in sys.argv):
-            sys.argv.append('--dataset.push_to_hub=false')
+        _default_option('--dataset.push_to_hub', 'false')
         from lerobot_robot_isaac_excavator.kaivuri_record import main as run
     elif command == 'rollout':
-        if '--strategy.type=dagger' in sys.argv and not any(arg.startswith('--dataset.push_to_hub=') for arg in sys.argv):
-            sys.argv.append('--dataset.push_to_hub=false')
+        if '--strategy.type=dagger' in sys.argv:
+            _default_option('--dataset.push_to_hub', 'false')
         for arg in sys.argv[1:]:
             if arg.startswith('--policy.path='):
                 checkpoint = Path(arg.split('=', 1)[1])
                 if checkpoint.is_dir():
                     check_policy(checkpoint)
         # This robot consumes joystick actions, not absolute joint-position targets.
-        if not any(arg.startswith('--return_to_initial_position=') for arg in sys.argv):
-            sys.argv.append('--return_to_initial_position=false')
+        _default_option('--return_to_initial_position', 'false')
         from lerobot_robot_isaac_excavator.kaivuri_rollout import main as run
     elif command == 'ros2':
         from ros2cli.cli import main as run
     elif command == 'dagger-aggregate':
         from lerobot_robot_isaac_excavator.dagger_aggregate import main as run
     elif command == 'train':
+        _default_option('--policy.push_to_hub', 'false')
         from lerobot.scripts.lerobot_train import main as run
     else:
         raise SystemExit('Unknown command: ' + command)

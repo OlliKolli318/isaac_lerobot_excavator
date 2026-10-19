@@ -120,6 +120,10 @@ by `lerobot-isaac-excavator`. The available commands are:
 
 `scripts/splat_tools.py` dispatches these commands to the installed
 packages. Recordings and DAgger rollouts default to `dataset.push_to_hub=false`.
+Training through `splat_tools.cmd train` defaults to `policy.push_to_hub=false`.
+Enable uploads explicitly only after confirming permission for the data/model
+and the destination. Upstream commands and other integrations can have their
+own network settings.
 Keep the action order, camera names, ROS domain, and DDS settings consistent
 across this scene, `kaivuri-control-bridge`, and `lerobot-isaac-excavator`.
 
@@ -134,16 +138,17 @@ referenced robot in `assets/robots/excavator_gripper.usd`. Close the scene in
 Isaac before changing its files externally. When moving assets, update their
 reference or payload paths in the owning USD layer.
 
-The local `tests/` directory is ignored by Git and is not included in a fresh
-checkout. If you have these tests locally, they check scene asset paths, DDS
-configuration, and camera delivery settings. Run them from the repository
-root with Python and pytest installed:
+The `tests/` directory checks launcher cleanup, command dispatch,
+DDS configuration, and the embedded scene contracts. Run it from the
+repository root with Python and pytest installed:
 
 ```text
 python -m pytest tests -q
 ```
 
 These tests do not require Isaac or ROS and do not exercise simulation.
+Run `python -m flake8` for correctness lint and `python -m mypy` for local
+type checks; deployment libraries are outside that type-checking scope.
 After scene changes, launch Isaac and check robot/log behavior, both camera
 streams (`/cabin/rgb` and `/gripper/rgb`), `/clock`, and `/kaivuri/sim_sample`.
 

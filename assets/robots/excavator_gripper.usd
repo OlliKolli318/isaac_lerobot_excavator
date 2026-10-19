@@ -26,8 +26,7 @@
         dictionary renderSettings = {
         }
     }
-    doc = """Generated from Composed Stage of root layer C:\\Users\\sh23937\\Desktop\\isaac-kaivuri_värit\\main usd\\assets\\assemblies\\excavator_with_gripper.usda
-"""
+    doc = "Excavator with gripper"
 )
 
 def Xform "excavator" (
