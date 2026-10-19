@@ -18,7 +18,7 @@ from .episode_metadata import repair_episode_metadata_locations, validate_episod
 def correction_episodes(dataset):
     if 'intervention' not in dataset.features:
         raise ValueError(f'{dataset.root}: missing intervention feature')
-    labels = {}
+    labels: dict[int, set[bool]] = {}
     rows = dataset.hf_dataset.select_columns(['episode_index', 'intervention']).with_format(None)
     for row in rows:
         values = np.asarray(row['intervention']).reshape(-1)

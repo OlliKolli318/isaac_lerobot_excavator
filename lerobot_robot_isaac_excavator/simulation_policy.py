@@ -6,8 +6,6 @@ import math
 import threading
 import time
 
-from numpy import rint
-
 import torch
 from lerobot.policies.utils import prepare_observation_for_inference
 from lerobot.utils.feature_utils import build_dataset_frame
@@ -31,7 +29,7 @@ class SimulationPolicy:
         self.error = None
         self.processed_epoch = None
         self.generation = 0
-        self.latencies = deque(maxlen=10)
+        self.latencies: deque[int] = deque(maxlen=10)
         self.timing = InferenceTiming() if getattr(self.cfg, "measure_inference_time", False) else None
         if ctx.policy.policy.config.type != "smolvla":
             raise ValueError("Simulation rollout currently supports SmolVLA.")

@@ -39,6 +39,18 @@ are normalized axes; the last is binary. Change the ROS topic names via the
 robot and teleoperator configuration classes, not by editing checkout paths.
 The scene and the bridge need matching topic names and action order.
 
+The project recorder and DAgger rollout default to local datasets, including
+when launched directly through their console scripts. Upload requires an
+explicit `--dataset.push_to_hub=true` (or the equivalent configuration value)
+and a successful run. Confirm permission for the dataset and destination
+before enabling it; a private destination does not establish permission.
+
+Run `python -m pytest tests -q` in the full LeRobot environment. The metadata
+aggregation tests require LeRobot and PyArrow; the other unit tests use
+synthetic messages and dependency doubles and do not start ROS participants.
+Run `python -m flake8` for correctness lint and `python -m mypy` for local type
+checks. These checks do not replace an Isaac/ROS recording and rollout test.
+
 The reusable, hardware-independent LeRobot/ROS 2 adapter lives in the
 separate `lerobot-ros2` repository. This package retains the excavator's
 specific schema and collector behavior for compatibility. It still has some

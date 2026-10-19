@@ -4,6 +4,7 @@ import logging
 import threading
 import time
 from functools import cached_property
+from typing import Any
 
 from lerobot.robots import Robot
 from lerobot.types import RobotAction, RobotObservation
@@ -15,6 +16,7 @@ from .ros_bridge import (
     LatestValue,
     RosNodeContext,
     check_not_stale,
+    finite_float_values,
     image_to_numpy,
     make_recording_mode_qos,
     make_sensor_qos,
@@ -40,14 +42,14 @@ class IsaacExcavator(Robot):
         self._lock = threading.Lock()
         self._state = LatestValue()
         self._images = {camera: LatestValue() for camera in self.cameras}
-        self._subscriptions = []
-        self._action_publisher = None
+        self._subscriptions: list[Any] = []
+        self._action_publisher: Any = None
         self._recording_mode_publisher = None
         self._connected = False
         self._legacy_state_warning_emitted = False
         self.timeline = SimTimeline(config.sync_buffer_size, config.sync_tolerance_s, config.sync_grace_s,
                                     clock_capacity=config.sync_clock_buffer_size)
-        self._stamped_action_publisher = None
+        self._stamped_action_publisher: Any = None
 
     @property
     def _camera_shape(self) -> tuple[int, int, int]:
@@ -83,10 +85,21 @@ class IsaacExcavator(Robot):
 
     @check_if_already_connected
     def connect(self, calibrate: bool = True) -> None:
+        del calibrate
+        if self.config.start_mode not in {"policy", "manual", "unchanged"}:
+            raise ValueError("start_mode must be one of: policy, manual, unchanged")
+        try:
+            self._connect_ros()
+        except Exception:
+            self._disconnect_ros()
+            raise
+        self._connected = True
+        logger.info("%s connected.", self)
+
+    def _connect_ros(self) -> None:
         from sensor_msgs.msg import Image
         from std_msgs.msg import Bool, Float32MultiArray
 
-        del calibrate
         self._ros.connect()
         node = self._ros.node
         # Fixed simulation-grid recording needs every source frame. Best-effort
@@ -130,23 +143,15 @@ class IsaacExcavator(Robot):
                 self.timeline.wait_ready(self.config.connect_timeout_s)
             except MissingSample as exc:
                 from rclpy.qos import ReliabilityPolicy
-                try:
-                    publishers = node.get_publishers_info_by_topic(self.config.clock_topic)
-                finally:
-                    self._ros.disconnect()
+                publishers = node.get_publishers_info_by_topic(self.config.clock_topic)
                 if publishers and all(p.qos_profile.reliability == ReliabilityPolicy.BEST_EFFORT
                                       for p in publishers):
                     raise MissingSample(
                         f"{self.config.clock_topic} is still published as BEST_EFFORT, but this recorder "
                         "requires RELIABLE clock delivery. Restart Isaac with the updated "
-                        "simulation-branch USD and launch_isaac_excavator_joystick_scene.py."
+                        "env.usd and launch_splat_simulation.cmd."
                     ) from exc
                 raise
-            except Exception:
-                self._ros.disconnect()
-                raise
-        if self.config.start_mode not in {"policy", "manual", "unchanged"}:
-            raise ValueError("start_mode must be one of: policy, manual, unchanged")
         if self.config.manage_control_mode:
             self._recording_mode_publisher = node.create_publisher(
                 Bool,
@@ -161,9 +166,6 @@ class IsaacExcavator(Robot):
         wait_for_value(self._state, self._lock, self.config.connect_timeout_s, self.config.state_topic)
         for camera, (topic_name, _) in self.cameras.items():
             wait_for_value(self._images[camera], self._lock, self.config.connect_timeout_s, topic_name)
-
-        self._connected = True
-        logger.info("%s connected.", self)
 
     def calibrate(self) -> None:
         pass
@@ -240,12 +242,16 @@ class IsaacExcavator(Robot):
 
     @check_if_not_connected
     def disconnect(self) -> None:
+        self._disconnect_ros()
+        logger.info("%s disconnected.", self)
+
+    def _disconnect_ros(self) -> None:
         self._subscriptions = []
         self._action_publisher = None
+        self._stamped_action_publisher = None
         self._recording_mode_publisher = None
         self._connected = False
         self._ros.disconnect()
-        logger.info("%s disconnected.", self)
 
     def _state_callback(self, msg) -> None:
         try:
@@ -277,7 +283,7 @@ class IsaacExcavator(Robot):
 
     def _normalize_state(self, msg) -> list[float]:
         """Accept the current five-value contract and the pre-bridge USD format."""
-        values = [float(value) for value in msg.data]
+        values = finite_float_values(msg.data, self.config.state_topic)
         expected_size = len(self.config.state_names)
         if len(values) == expected_size:
             return values
@@ -295,5 +301,5 @@ class IsaacExcavator(Robot):
             return values[: expected_size - 1] + [claw_closed]
 
         raise ValueError(
-            f"expected {expected_size} values (or legacy {expected_size + 1}), got {len(values)}: {values}"
+            f"expected {expected_size} values (or legacy {expected_size + 1}), got {len(values)}"
         )

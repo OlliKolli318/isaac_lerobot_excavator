@@ -60,9 +60,18 @@ class IsaacExcavatorAction(Teleoperator):
 
     @check_if_already_connected
     def connect(self, calibrate: bool = True) -> None:
+        del calibrate
+        try:
+            self._connect_ros()
+        except Exception:
+            self._disconnect_ros()
+            raise
+        self._connected = True
+        logger.info("%s connected.", self)
+
+    def _connect_ros(self) -> None:
         from std_msgs.msg import Bool, Float32MultiArray
 
-        del calibrate
         self._ros.connect()
         node = self._ros.node
         self._subscription = node.create_subscription(
@@ -80,8 +89,6 @@ class IsaacExcavatorAction(Teleoperator):
             publish_recording_mode(node, self._recording_mode_publisher, manual_mode=True)
 
         wait_for_value(self._action, self._lock, self.config.connect_timeout_s, self.config.action_topic)
-        self._connected = True
-        logger.info("%s connected.", self)
 
     def calibrate(self) -> None:
         pass
@@ -101,11 +108,14 @@ class IsaacExcavatorAction(Teleoperator):
 
     @check_if_not_connected
     def disconnect(self) -> None:
+        self._disconnect_ros()
+        logger.info("%s disconnected.", self)
+
+    def _disconnect_ros(self) -> None:
         self._subscription = None
         self._recording_mode_publisher = None
         self._connected = False
         self._ros.disconnect()
-        logger.info("%s disconnected.", self)
 
     def _action_callback(self, msg) -> None:
         try:

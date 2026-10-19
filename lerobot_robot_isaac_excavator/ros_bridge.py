@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import ExitStack
+import math
 import threading
 import time
 from dataclasses import dataclass
@@ -22,9 +24,11 @@ class LatestValue:
 class RosNodeContext:
     def __init__(self, node_name: str) -> None:
         self.node_name = node_name
-        self.node = None
-        self.executor = None
+        # ROS is loaded lazily and may have no installed typing stubs.
+        self.node: Any = None
+        self.executor: Any = None
         self.thread: threading.Thread | None = None
+        self._registered = False
 
     def connect(self) -> None:
         global _ACTIVE_CONTEXTS, _RCLPY_STARTED_BY_PLUGIN
@@ -40,6 +44,7 @@ class RosNodeContext:
                 rclpy.init(args=None)
                 _RCLPY_STARTED_BY_PLUGIN = True
             _ACTIVE_CONTEXTS += 1
+            self._registered = True
 
         try:
             self.node = rclpy.create_node(self.node_name)
@@ -48,35 +53,41 @@ class RosNodeContext:
             self.thread = threading.Thread(target=self.executor.spin, daemon=True)
             self.thread.start()
         except Exception:
-            with _CONTEXT_LOCK:
-                _ACTIVE_CONTEXTS = max(0, _ACTIVE_CONTEXTS - 1)
-                if _ACTIVE_CONTEXTS == 0 and _RCLPY_STARTED_BY_PLUGIN and rclpy.ok():
-                    rclpy.shutdown()
-                    _RCLPY_STARTED_BY_PLUGIN = False
+            self.disconnect()
             raise
 
     def disconnect(self) -> None:
-        global _ACTIVE_CONTEXTS, _RCLPY_STARTED_BY_PLUGIN
-
-        if self.node is None:
+        if not self._registered:
             return
 
-        import rclpy
-
-        if self.executor is not None:
-            self.executor.shutdown()
-        if self.thread is not None:
-            self.thread.join(timeout=2.0)
-        self.node.destroy_node()
+        node, executor, thread = self.node, self.executor, self.thread
         self.node = None
         self.executor = None
         self.thread = None
+        # Attempt every cleanup even when a partially initialized resource fails.
+        with ExitStack() as cleanup:
+            cleanup.callback(self._release_context)
+            if node is not None:
+                cleanup.callback(node.destroy_node)
+            if thread is not None and thread.ident is not None:
+                cleanup.callback(thread.join, timeout=2.0)
+            if executor is not None:
+                cleanup.callback(executor.shutdown)
+
+    def _release_context(self) -> None:
+        global _ACTIVE_CONTEXTS, _RCLPY_STARTED_BY_PLUGIN
+
+        import rclpy
 
         with _CONTEXT_LOCK:
-            _ACTIVE_CONTEXTS = max(0, _ACTIVE_CONTEXTS - 1)
-            if _ACTIVE_CONTEXTS == 0 and _RCLPY_STARTED_BY_PLUGIN and rclpy.ok():
-                rclpy.shutdown()
+            if not self._registered:
+                return
+            self._registered = False
+            _ACTIVE_CONTEXTS -= 1
+            if _ACTIVE_CONTEXTS == 0 and _RCLPY_STARTED_BY_PLUGIN:
                 _RCLPY_STARTED_BY_PLUGIN = False
+                if rclpy.ok():
+                    rclpy.shutdown()
 
 
 def make_sensor_qos(depth=1, reliable=False):
@@ -135,11 +146,22 @@ def check_not_stale(latest: LatestValue, stale_timeout_s: float, name: str) -> N
         raise RuntimeError(f"Latest ROS topic {name!r} message is stale ({age:.3f}s old).")
 
 
+def finite_float_values(values, topic_name: str) -> list[float]:
+    """Reject malformed numeric samples without logging their payloads."""
+    try:
+        result = [float(value) for value in values]
+    except (TypeError, ValueError, OverflowError):
+        raise ValueError(f"ROS topic {topic_name!r} must contain numeric values") from None
+    if not all(math.isfinite(value) for value in result):
+        raise ValueError(f"ROS topic {topic_name!r} must contain finite values")
+    return result
+
+
 def float_multi_array_to_list(msg, expected_len: int, topic_name: str) -> list[float]:
-    values = [float(v) for v in msg.data]
+    values = finite_float_values(msg.data, topic_name)
     if len(values) != expected_len:
         raise ValueError(
-            f"ROS topic {topic_name!r} produced {len(values)} values, expected {expected_len}: {values}"
+            f"ROS topic {topic_name!r} produced {len(values)} values, expected {expected_len}"
         )
     return values
 
@@ -151,9 +173,14 @@ def image_to_numpy(msg, expected_shape: tuple[int, int, int], topic_name: str) -
             f"ROS topic {topic_name!r} image shape is {(msg.height, msg.width)}, expected {(height, width)}"
         )
 
+    encoding = msg.encoding.lower()
+    pixel_channels = {'rgb8': 3, 'bgr8': 3, 'rgba8': 4, 'bgra8': 4, 'mono8': 1}.get(encoding)
+    if pixel_channels is None:
+        raise ValueError(f"Unsupported image encoding on ROS topic {topic_name!r}.")
+    if msg.step < width * pixel_channels or len(msg.data) != height * msg.step:
+        raise ValueError(f"ROS topic {topic_name!r} image row stride or buffer length is invalid")
     raw = bytes(msg.data)
     row = np.frombuffer(raw, dtype=np.uint8).reshape((msg.height, msg.step))
-    encoding = msg.encoding.lower()
 
     if encoding == "rgb8":
         image = row[:, : msg.width * 3].reshape((msg.height, msg.width, 3))
@@ -163,11 +190,9 @@ def image_to_numpy(msg, expected_shape: tuple[int, int, int], topic_name: str) -
         image = row[:, : msg.width * 4].reshape((msg.height, msg.width, 4))[:, :, :3]
     elif encoding == "bgra8":
         image = row[:, : msg.width * 4].reshape((msg.height, msg.width, 4))[:, :, [2, 1, 0]]
-    elif encoding == "mono8":
+    else:  # mono8
         gray = row[:, : msg.width].reshape((msg.height, msg.width))
         image = np.repeat(gray[:, :, None], 3, axis=2)
-    else:
-        raise ValueError(f"Unsupported encoding {msg.encoding!r} on ROS topic {topic_name!r}.")
 
     if image.shape != (height, width, channels):
         raise ValueError(f"ROS topic {topic_name!r} converted to {image.shape}, expected {expected_shape}")

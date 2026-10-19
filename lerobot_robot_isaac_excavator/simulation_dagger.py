@@ -4,6 +4,7 @@ The expert is the in-scene Xbox. The teleop subscriber is deliberately not used
 as an expert source: /kaivuri/action contains the *selected* action, including
 policy actions. JointState.effort is protocol metadata, not physical effort.
 """
+from contextlib import ExitStack
 import copy
 import logging
 import queue
@@ -59,24 +60,28 @@ class DaggerLink:
         from rclpy.clock import Clock, ClockType
         self.String = String
         self.ros = RosNodeContext('kaivuri_simulation_dagger')
-        self.ros.connect()
-        self.commands = queue.SimpleQueue()
-        self.session, self.generation = secrets.randbelow(2**52 - 1) + 1, 0
-        self.request = f'{self.session}:0:idle'
-        self.ack = ''
-        self.ack_at = -float('inf')
-        self.request_at = time.monotonic()
-        node = self.ros.node
-        self.publisher = node.create_publisher(String, '/kaivuri/dagger/request', 10)
-        self.continue_after_success = continue_after_success
-        self.continue_publisher = node.create_publisher(String, '/kaivuri/dagger/continue_after_success', 10)
-        self.status = node.create_publisher(String, '/kaivuri/episode/status', 10)
-        self.command_sub = node.create_subscription(String, '/kaivuri/episode_command',
-                                                   lambda m: self.commands.put(m.data.strip()), 10)
-        self.ack_sub = node.create_subscription(String, '/kaivuri/dagger/state', self._ack,
-                                               make_recording_mode_qos())
-        self.timer = node.create_timer(.2, self.heartbeat, clock=Clock(clock_type=ClockType.STEADY_TIME))
-        self.heartbeat()
+        with ExitStack() as cleanup:
+            cleanup.callback(self.ros.disconnect)
+            self.ros.connect()
+            self.commands: queue.SimpleQueue[str] = queue.SimpleQueue()
+            self.session, self.generation = secrets.randbelow(2**52 - 1) + 1, 0
+            self.request = f'{self.session}:0:idle'
+            self.ack = ''
+            self.ack_at = -float('inf')
+            self.request_at = time.monotonic()
+            node = self.ros.node
+            self.publisher = node.create_publisher(String, '/kaivuri/dagger/request', 10)
+            self.continue_after_success = continue_after_success
+            self.continue_publisher = node.create_publisher(String, '/kaivuri/dagger/continue_after_success', 10)
+            self.status = node.create_publisher(String, '/kaivuri/episode/status', 10)
+            self.command_sub = node.create_subscription(String, '/kaivuri/episode_command',
+                                                       lambda m: self.commands.put(m.data.strip()), 10)
+            self.ack_sub = node.create_subscription(String, '/kaivuri/dagger/state', self._ack,
+                                                   make_recording_mode_qos())
+            self.timer = node.create_timer(.2, self.heartbeat, clock=Clock(clock_type=ClockType.STEADY_TIME))
+            self.heartbeat()
+            cleanup.pop_all()
+
 
     def _ack(self, msg):
         self.ack, self.ack_at = msg.data, time.monotonic()
@@ -107,10 +112,12 @@ class DaggerLink:
         from rclpy.duration import Duration
         # Off releases ownership but the bridge remains disabled. If delivery
         # fails, lease expiry holds instead of reverting to autonomous motion.
-        self.phase('off')
-        self.ros.node.destroy_timer(self.timer)
-        self.publisher.wait_for_all_acked(timeout=Duration(seconds=1))
-        self.ros.disconnect()
+        try:
+            self.phase('off')
+            self.ros.node.destroy_timer(self.timer)
+            self.publisher.wait_for_all_acked(timeout=Duration(seconds=1))
+        finally:
+            self.ros.disconnect()
 
 
 class SimulationDagger:
@@ -306,6 +313,14 @@ class SimulationDagger:
                 rate.index = max(rate.index, rate.after(now))
 
 
+def _discard_and_finalize(dataset):
+    try:
+        if dataset.has_pending_frames():
+            dataset.clear_episode_buffer()
+    finally:
+        dataset.finalize()
+
+
 def run_dagger(cfg, stop):
     if getattr(cfg, 'continue_after_success', False) and cfg.strategy.record_autonomous:
         raise ValueError('continue_after_success requires strategy.record_autonomous=false to avoid recording log teleports.')
@@ -352,26 +367,22 @@ def run_dagger(cfg, stop):
         runner.run()
         clean_exit = True
     finally:
-        if link:
-            link.phase('idle')
-            if runner and runner.active:
-                link.report('discarded')
-        if runner:
-            runner.engine.stop()
-        if listener:
-            listener.stop()
-        try:
+        # Every resource must be released even when a hold request or encoder fails.
+        with ExitStack() as cleanup:
+            if robot.is_connected:
+                cleanup.callback(robot.disconnect)
+            if link:
+                cleanup.callback(link.close)
             if dataset:
-                if dataset.has_pending_frames():
-                    dataset.clear_episode_buffer()
-                dataset.finalize()
-        finally:
-            try:
-                if link:
-                    link.close()
-            finally:
-                if robot.is_connected:
-                    robot.disconnect()
+                cleanup.callback(_discard_and_finalize, dataset)
+            if listener:
+                cleanup.callback(listener.stop)
+            if runner:
+                cleanup.callback(runner.engine.stop)
+            if link:
+                link.phase('idle')
+                if runner and runner.active:
+                    link.report('discarded')
     if clean_exit and cfg.dataset.push_to_hub and dataset.num_episodes:
         dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
     return dataset

@@ -1,9 +1,10 @@
 """Execute SmolVLA actions on Isaac's /clock grid."""
+from contextlib import ExitStack
 import logging
 from dataclasses import dataclass
 
-from .kaivuri_record import _configure_windows_dll_search_path
-_configure_windows_dll_search_path()
+# Importing the recorder configures Windows DLL lookup before loading LeRobot.
+from .kaivuri_record import LocalDatasetRecordConfig
 
 from lerobot.configs import parser
 from lerobot.rollout import RolloutConfig, build_rollout_context
@@ -16,6 +17,7 @@ from .simulation_time import ClockReset, SimRate
 
 @dataclass
 class SimulationRolloutConfig(RolloutConfig):
+    dataset: LocalDatasetRecordConfig | None = None
     # Joystick commands cannot be interpreted as absolute joint positions.
     return_to_initial_position: bool = False
     measure_inference_time: bool = False
@@ -91,12 +93,13 @@ def run_simulation_rollout(ctx):
                         dict(zip(robot.action_features, (0., 0., 0., 0., last_claw), strict=True)),
                         max(now + 1, last_sent_ns + 1), run_id)
         finally:
-            if engine:
-                engine.stop()
-            if robot.is_connected:
-                robot.disconnect()
-            if ctx.hardware.teleop and ctx.hardware.teleop.is_connected:
-                ctx.hardware.teleop.disconnect()
+            with ExitStack() as cleanup:
+                if ctx.hardware.teleop and ctx.hardware.teleop.is_connected:
+                    cleanup.callback(ctx.hardware.teleop.disconnect)
+                if robot.is_connected:
+                    cleanup.callback(robot.disconnect)
+                if engine:
+                    cleanup.callback(engine.stop)
 
 
 @parser.wrap()

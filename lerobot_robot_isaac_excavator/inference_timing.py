@@ -13,7 +13,7 @@ class InferenceTiming:
 
     def __init__(self):
         self.completed = 0
-        self.samples = deque(maxlen=1000)
+        self.samples: deque[tuple[float, float]] = deque(maxlen=1000)
         self.lock = threading.Lock()
 
     def record(self, model_ms, pipeline_ms):
@@ -34,7 +34,7 @@ class InferenceTiming:
         if not samples:
             logger.info("Inference timing: %d completed chunks; no post-warm-up samples yet.", completed)
             return
-        values = []
+        values: list[float] = []
         for column in zip(*samples):
             ordered = sorted(column)
             values.extend((statistics.mean(column), statistics.median(column),

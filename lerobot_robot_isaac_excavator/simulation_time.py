@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import math
 import threading
 import time
+from typing import Any
 
 NANOSECONDS = 1_000_000_000
 
@@ -46,7 +47,8 @@ class SimTimeline:
         self.clock_capacity = clock_capacity
         self.tolerance_ns = round(tolerance_s * NANOSECONDS)
         self.grace_ns = round(grace_s * NANOSECONDS)
-        self.streams = {k: OrderedDict() for k in ("sample", "camera2", "camera3", "clock")}
+        self.streams: dict[str, OrderedDict[int, Any]] = {
+            k: OrderedDict() for k in ("sample", "camera2", "camera3", "clock")}
         self._retired_runs = set()
         self._run_arrived_before_reset = False
 
@@ -102,8 +104,8 @@ class SimTimeline:
                 self.condition.wait(min(0.05, remaining))
 
     def _nearest(self, key, ns):
-        stamps = [s for s in self.streams[key] if abs(s - ns) <= self.tolerance_ns]
-        return min(stamps, key=lambda s: abs(s - ns)) if stamps else None
+        nearest = min(self.streams[key], key=lambda stamp: abs(stamp - ns), default=None)
+        return nearest if nearest is not None and abs(nearest - ns) <= self.tolerance_ns else None
 
     def _missing_details(self, key, target_ns):
         """Called with the condition held; report actual retained timestamps."""
@@ -175,9 +177,9 @@ class SimRate:
 
     def at(self, index):
         return self.origin_ns + round(index * NANOSECONDS / self.fps)
-    # This returns the index of the next schedulable frame after the given timestamp, which is useful for
-    # scheduling inference and action selection in the simulation loop.
+
     def after(self, ns):
+        """Return the first frame index strictly after the given timestamp."""
         index = max(0, math.floor((ns - self.origin_ns) * self.fps / NANOSECONDS) + 1)
         while self.at(index) <= ns:
             index += 1

@@ -8,16 +8,17 @@ recorder publishes ``saved`` on ``/kaivuri/episode/status``.  Isaac waits for
 that acknowledgement before it relocates the task objects.
 """
 
+from contextlib import ExitStack
 import logging
 import os
 import sys
 import threading
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
-from pprint import pformat
+from typing import Any
 
 
-_DLL_DIRECTORY_HANDLES = []
+_DLL_DIRECTORY_HANDLES: list[object] = []
 
 
 def _configure_windows_dll_search_path() -> None:
@@ -44,7 +45,6 @@ from lerobot.datasets import (
     LeRobotDataset,
     VideoEncodingManager,
     aggregate_pipeline_dataset_features,
-    create_initial_features,
 )
 from lerobot.processor import RobotProcessorPipeline, make_default_processors
 from lerobot.robots import make_robot_from_config
@@ -57,12 +57,21 @@ from lerobot.utils.utils import init_logging, log_say
 from lerobot.utils.visualization_utils import init_visualization, shutdown_visualization
 from .simulation_time import ClockReset, MissingSample
 from .simulation_record import TIME_FEATURES, simulation_record_loop
+from .ros_bridge import RosNodeContext
+
+
+@dataclass
+class LocalDatasetRecordConfig(upstream.DatasetRecordConfig):
+    """Keep collection local unless the caller explicitly enables upload."""
+
+    push_to_hub: bool = False
 
 
 @dataclass
 class KaivuriRecordConfig(upstream.RecordConfig):
     """Standard LeRobot recorder settings plus the Isaac episode handshake."""
 
+    dataset: LocalDatasetRecordConfig
     episode_command_topic: str = "/kaivuri/episode_command"
     episode_status_topic: str = "/kaivuri/episode/status"
     start_command: str = "start"
@@ -77,9 +86,7 @@ def _without_feature_info(value):
     """Remove codec details that LeRobot intentionally excludes on resume."""
     if isinstance(value, dict):
         return {key: _without_feature_info(item) for key, item in value.items() if key != "info"}
-    if isinstance(value, list):
-        return [_without_feature_info(item) for item in value]
-    if isinstance(value, tuple):
+    if isinstance(value, (list, tuple)):
         return [_without_feature_info(item) for item in value]
     return value
 
@@ -123,28 +130,23 @@ class EpisodeCommandBridge:
         self._active_episode = False
         self._start_requested = False
         self._end_command = None
-        self._node = None
-        self._executor = None
-        self._thread: threading.Thread | None = None
+        self._ros = RosNodeContext("kaivuri_lerobot_native_recorder")
+        self._node: Any = None
         self._status_publisher = None
-        self._started_rclpy = False
 
     def start(self) -> None:
-        import rclpy
-        from rclpy.executors import MultiThreadedExecutor
         from std_msgs.msg import String
 
-        if not rclpy.ok():
-            rclpy.init(args=None)
-            self._started_rclpy = True
-
-        self._node = rclpy.create_node("kaivuri_lerobot_native_recorder")
-        self._status_publisher = self._node.create_publisher(String, self._cfg.episode_status_topic, 10)
-        self._node.create_subscription(String, self._cfg.episode_command_topic, self._on_command, 10)
-        self._executor = MultiThreadedExecutor(num_threads=1)
-        self._executor.add_node(self._node)
-        self._thread = threading.Thread(target=self._executor.spin, daemon=True)
-        self._thread.start()
+        if self._node is not None:
+            return
+        try:
+            self._ros.connect()
+            self._node = self._ros.node
+            self._status_publisher = self._node.create_publisher(String, self._cfg.episode_status_topic, 10)
+            self._node.create_subscription(String, self._cfg.episode_command_topic, self._on_command, 10)
+        except Exception:
+            self.stop()
+            raise
         logging.info(
             "Listening for start/save/discard commands on %s; publishing episode status on %s.",
             self._cfg.episode_command_topic,
@@ -152,24 +154,11 @@ class EpisodeCommandBridge:
         )
 
     def stop(self) -> None:
-        if self._executor is not None:
-            self._executor.shutdown()
-        if self._thread is not None:
-            self._thread.join(timeout=2.0)
-        if self._node is not None:
-            self._node.destroy_node()
-
-        self._thread = None
-        self._executor = None
-        self._node = None
-        self._status_publisher = None
-
-        if self._started_rclpy:
-            import rclpy
-
-            if rclpy.ok():
-                rclpy.shutdown()
-            self._started_rclpy = False
+        try:
+            self._ros.disconnect()
+        finally:
+            self._node = None
+            self._status_publisher = None
 
     def wait_for_start(self) -> bool:
         """Block while idle until Isaac requests a new episode or Esc stops us."""
@@ -215,7 +204,7 @@ class EpisodeCommandBridge:
             return
 
         if command not in (self._cfg.end_save_command, self._cfg.end_discard_command):
-            logging.debug("Ignoring episode command %r.", command)
+            logging.debug("Ignoring an unrecognized episode command.")
             return
 
         with self._lock:
@@ -286,7 +275,8 @@ def record(
     if cfg.time_source not in ("simulation", "wall"):
         raise ValueError("time_source must be simulation or wall")
     cfg.robot.simulation_time = cfg.time_source == "simulation"
-    logging.info(pformat(asdict(cfg)))
+    logging.info("Recording with %s time at %s FPS; hub upload enabled=%s.",
+                 cfg.time_source, cfg.dataset.fps, cfg.dataset.push_to_hub)
     if cfg.display_data:
         init_visualization(
             cfg.display_mode,
@@ -332,7 +322,7 @@ def record(
         dataset = _make_dataset(cfg, robot, dataset_features)
         robot.connect()
         teleop.connect()
-        listener, events = init_keyboard_listener() # TODO: Remove this listener and use the ROS bridge to stop recording instead.
+        listener, events = init_keyboard_listener()
         bridge = EpisodeCommandBridge(events, cfg)
         bridge.start()
 
@@ -405,25 +395,28 @@ def record(
                 if end_command == cfg.end_save_command:
                     bridge.publish_status(cfg.saved_status)
     finally:
-        log_say("Stop recording", cfg.play_sounds, blocking=True)
-        if dataset:
-            dataset.finalize()
-        if bridge:
-            bridge.stop()
-        if robot.is_connected:
-            robot.disconnect()
-        if teleop and teleop.is_connected:
-            teleop.disconnect()
-        if listener:
-            listener.stop()
-        if cfg.display_data:
-            shutdown_visualization(cfg.display_mode)
-        if cfg.dataset.push_to_hub:
-            if dataset and dataset.num_episodes > 0:
-                dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
-            else:
-                logging.warning("No episodes saved — skipping push to hub")
-        log_say("Exiting", cfg.play_sounds)
+        # LIFO callbacks preserve shutdown order and run even if finalization fails.
+        with ExitStack() as cleanup:
+            if cfg.display_data:
+                cleanup.callback(shutdown_visualization, cfg.display_mode)
+            if listener:
+                cleanup.callback(listener.stop)
+            if teleop and teleop.is_connected:
+                cleanup.callback(teleop.disconnect)
+            if robot.is_connected:
+                cleanup.callback(robot.disconnect)
+            if bridge:
+                cleanup.callback(bridge.stop)
+            if dataset:
+                cleanup.callback(dataset.finalize)
+            log_say("Stop recording", cfg.play_sounds, blocking=True)
+    # Upload only after a successful recording and complete local cleanup.
+    if cfg.dataset.push_to_hub:
+        if dataset and dataset.num_episodes > 0:
+            dataset.push_to_hub(tags=cfg.dataset.tags, private=cfg.dataset.private)
+        else:
+            logging.warning("No episodes saved — skipping push to hub")
+    log_say("Exiting", cfg.play_sounds)
     return dataset
 
 

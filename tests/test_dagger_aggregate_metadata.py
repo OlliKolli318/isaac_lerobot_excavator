@@ -1,7 +1,6 @@
 """Offline Parquet/LeRobot regressions for repeated DAgger aggregation."""
 from pathlib import Path
 import hashlib
-import json
 import sys
 import tempfile
 import unittest
