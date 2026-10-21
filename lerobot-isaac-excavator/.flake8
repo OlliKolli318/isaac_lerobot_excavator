@@ -1,0 +1,4 @@
+[flake8]
+# Correctness checks; formatting is intentionally not enforced.
+select = E9,F
+exclude = .git,.venv,venv,build,install,dist,*.egg-info

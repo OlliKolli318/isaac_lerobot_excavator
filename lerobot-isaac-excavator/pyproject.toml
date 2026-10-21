@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "lerobot_robot_isaac_excavator"
+version = "0.1.0"
+description = "LeRobot ROS2 interface for the Isaac excavator simulation."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "lerobot>=0.4.2",
+    "numpy>=1.26",
+]
+
+[project.scripts]
+kaivuri-lerobot-rollout = "lerobot_robot_isaac_excavator.kaivuri_rollout:main"
+kaivuri-lerobot-record = "lerobot_robot_isaac_excavator.kaivuri_record:main"
+
+[tool.setuptools.packages.find]
+include = ["lerobot_robot_isaac_excavator*"]
