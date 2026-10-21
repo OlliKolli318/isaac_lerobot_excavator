@@ -1,0 +1,6 @@
+@echo off
+rem Copy this file to splat.local.cmd and set paths for your machine.
+set "ISAAC_SIM_ROOT=C:\path\to\isaacsim"
+set "ROS_LOCAL_SETUP=C:\path\to\ros2_workspace\install\local_setup.bat"
+set "PIXI_MANIFEST=C:\path\to\pixi.toml"
+set "ROS_DOMAIN_ID=0"
