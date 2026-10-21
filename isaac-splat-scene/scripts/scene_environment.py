@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 import sys
 
-_dll_handles = []
+_dll_handles: list[object] = []
 
 
 def isaac_root() -> Path:

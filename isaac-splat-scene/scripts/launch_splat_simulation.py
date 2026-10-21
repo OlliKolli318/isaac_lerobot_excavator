@@ -12,6 +12,8 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--scene', type=Path, default=Path(__file__).resolve().parent.parent / 'env.usd',
                         help='USD or USDZ scene to open; defaults to env.usd')
+    parser.add_argument('--headless', action='store_true',
+                        help='Run without a GUI window (camera rendering still requires a GPU)')
     args = parser.parse_args()
     isaac = isaac_root()
     scene = args.scene.resolve()
@@ -27,7 +29,7 @@ def main():
         from isaacsim import SimulationApp
     except ImportError:
         from omni.isaac.kit import SimulationApp
-    app = SimulationApp({'headless': False, 'hide_ui': False},
+    app = SimulationApp({'headless': args.headless, 'hide_ui': args.headless},
                         experience=str(isaac / 'apps' / 'isaacsim.exp.full.kit'))
     timeline = None
     try:

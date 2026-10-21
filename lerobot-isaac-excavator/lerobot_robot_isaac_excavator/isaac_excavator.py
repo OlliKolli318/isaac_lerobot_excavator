@@ -7,7 +7,12 @@ from functools import cached_property
 from typing import Any
 
 from lerobot.robots import Robot
-from lerobot.types import RobotAction, RobotObservation
+try:
+    from lerobot.lerobot_types import RobotAction, RobotObservation
+except ModuleNotFoundError as exc:
+    if exc.name != "lerobot.lerobot_types":
+        raise
+    from lerobot.types import RobotAction, RobotObservation
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
 from .config_isaac_excavator import IsaacExcavatorConfig
@@ -149,7 +154,8 @@ class IsaacExcavator(Robot):
                     raise MissingSample(
                         f"{self.config.clock_topic} is still published as BEST_EFFORT, but this recorder "
                         "requires RELIABLE clock delivery. Restart Isaac with the updated "
-                        "env.usd and launch_splat_simulation.cmd."
+                        "env.usd and launch_splat_simulation.sh (Linux) or "
+                        "launch_splat_simulation.cmd (Windows)."
                     ) from exc
                 raise
         if self.config.manage_control_mode:

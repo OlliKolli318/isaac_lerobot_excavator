@@ -29,8 +29,10 @@ def _default_option(name, value):
 
 
 def main():
+    entry_point = 'splat_tools.cmd' if sys.platform == 'win32' else './splat_tools.sh'
     if len(sys.argv) < 2 or sys.argv[1] in ('-h', '--help'):
-        print('Usage: splat_tools.cmd {bridge|record|rollout|dagger|dagger-aggregate|episode-preview|train|ros2|check|check-policy} [arguments]')
+        print(f'Usage: {entry_point} {{bridge|record|rollout|dagger|dagger-aggregate|episode-preview|train|ros2|check|check-policy}} [arguments]')
+        print('Direct Python entry point: python scripts/splat_tools.py <command> [arguments]')
         print('bridge starts disabled; use ros2 service calls to enable manual/policy control.')
         return
     command = sys.argv.pop(1)
@@ -41,7 +43,7 @@ def main():
         command = 'rollout'
     if command == 'check-policy':
         if len(sys.argv) != 2:
-            raise SystemExit('Usage: splat_tools.cmd check-policy C:/path/to/pretrained_model')
+            raise SystemExit(f'Usage: {entry_point} check-policy <pretrained_model_directory>')
         check_policy(sys.argv[1])
         return
     if command == 'episode-preview':
@@ -62,7 +64,9 @@ def main():
         from lerobot_robot_isaac_excavator import kaivuri_rollout
         for module in ('simulation_dagger', 'dagger_aggregate'):
             importlib.import_module('lerobot_robot_isaac_excavator.' + module)
-        print('PASS: ROS2, OpenCV, simulation bridge, recorder, rollout, DAgger and aggregation import successfully.')
+        importlib.import_module('lerobot.policies.smolvla.modeling_smolvla')
+        print('PASS: ROS2, OpenCV, simulation bridge, recorder, SmolVLA rollout, DAgger and aggregation import successfully.')
+        print('Python:', sys.executable)
         print('Recorder:', kaivuri_record.__file__)
         print('Bridge:', control_bridge.__file__)
         print('Rollout:', kaivuri_rollout.__file__)

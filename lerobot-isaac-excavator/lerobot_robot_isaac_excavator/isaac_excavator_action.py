@@ -7,7 +7,12 @@ from functools import cached_property
 from typing import Any
 
 from lerobot.teleoperators.teleoperator import Teleoperator
-from lerobot.types import RobotAction
+try:
+    from lerobot.lerobot_types import RobotAction
+except ModuleNotFoundError as exc:
+    if exc.name != "lerobot.lerobot_types":
+        raise
+    from lerobot.types import RobotAction
 from lerobot.utils.decorators import check_if_already_connected, check_if_not_connected
 
 from .config_isaac_excavator_action import IsaacExcavatorActionConfig

@@ -42,6 +42,16 @@ def test_normal_launch_stops_and_closes(runtime):
     runtime.app.close.assert_called_once()
 
 
+def test_headless_launch_keeps_scene_playback(runtime, monkeypatch):
+    monkeypatch.setattr(sys, 'argv', [*sys.argv, '--headless'])
+    launcher.main()
+    settings = sys.modules['isaacsim'].SimulationApp.call_args.args[0]
+    assert settings['headless'] is True
+    assert settings['hide_ui'] is True
+    runtime.timeline.play.assert_called_once()
+    runtime.app.close.assert_called_once()
+
+
 def test_stage_failure_closes_application(runtime):
     runtime.context.open_stage.side_effect = RuntimeError('stage failure')
     with pytest.raises(RuntimeError, match='stage failure'):

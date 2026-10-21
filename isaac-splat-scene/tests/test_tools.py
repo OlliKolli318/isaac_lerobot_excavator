@@ -60,7 +60,8 @@ def test_check_actually_imports_dagger_and_aggregation(monkeypatch, commands):
     splat_tools.main()
     assert [call.args[0] for call in commands[1].call_args_list] == [
         'rclpy', 'cv2', 'lerobot_robot_isaac_excavator.simulation_dagger',
-        'lerobot_robot_isaac_excavator.dagger_aggregate']
+        'lerobot_robot_isaac_excavator.dagger_aggregate',
+        'lerobot.policies.smolvla.modeling_smolvla']
 
 
 @pytest.mark.parametrize('state,action', [([6], [5]), ([5], [6]), (None, None)])

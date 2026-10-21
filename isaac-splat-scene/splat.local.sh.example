@@ -1,0 +1,21 @@
+# Linux / Bash. Copy to splat.local.sh and adjust paths as needed.
+# The launchers also work without this file using the defaults below.
+# Use "$HOME/..." rather than "~/..." (quoted tilde does not expand).
+# Environment variables already set in the terminal take precedence.
+export ISAAC_SIM_ROOT="${ISAAC_SIM_ROOT:-$HOME/isaacsim}"
+export ROS_DISTRO="${ROS_DISTRO:-jazzy}"
+export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
+export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
+export ROS_SETUP="${ROS_SETUP:-/opt/ros/$ROS_DISTRO/setup.bash}"
+
+# These defaults are relative to this file, so the workspace can be moved.
+splat_config_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+export LEROBOT_VENV="${LEROBOT_VENV:-${VIRTUAL_ENV:-$splat_config_dir/../.venv}}"
+unset splat_config_dir
+
+# Optional ROS workspace overlay; leave unset for pip-installed project packages.
+# export ROS_LOCAL_SETUP="/path/to/workspace/install/local_setup.bash"
+
+# Optional DDS override: an absolute XML path, or "inherit" to keep your own.
+# export KAIVURI_FASTDDS_PROFILE="/absolute/path/to/profile.xml"
+# Pixi and PIXI_MANIFEST are not used on Linux.
