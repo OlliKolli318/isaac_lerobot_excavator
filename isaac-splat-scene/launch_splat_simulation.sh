@@ -16,7 +16,9 @@ if [[ "${1:-}" == "--help" || "${1:-}" == "-h" ]]; then
 fi
 
 export ISAAC_SIM_ROOT="${ISAAC_SIM_ROOT:-$HOME/isaacsim}"
-export ROS_DISTRO="${ROS_DISTRO:-jazzy}"
+# Select bundled libraries independently of the external ROS tools environment.
+export ISAAC_ROS_DISTRO="${ISAAC_ROS_DISTRO:-jazzy}"
+export ROS_DISTRO="$ISAAC_ROS_DISTRO"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"
 if [[ ! -x "$ISAAC_SIM_ROOT/python.sh" ]]; then

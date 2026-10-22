@@ -1,0 +1,7 @@
+# Xbox Series S|X USB, firmware 5.9, Linux xpad layout.
+# Layout checked against /dev/input/js0 axis/button maps on the target machine.
+# GLFW format: https://www.glfw.org/docs/latest/input_guide.html#gamepad_mapping
+030000005e040000120b000009050000,Xbox Series S|X USB,a:b0,b:b1,x:b2,y:b3,leftshoulder:b4,rightshoulder:b5,back:b6,start:b7,guide:b8,leftstick:b9,rightstick:b10,leftx:a0,lefty:a1,lefttrigger:a2,rightx:a3,righty:a4,righttrigger:a5,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,
+# Bluetooth firmware 5.9 exposes a different axis/button layout (15 buttons).
+# No Share binding: this Linux device does not expose a sixteenth button.
+050000005e040000130b000009050000,Xbox Series S|X Bluetooth,a:b0,b:b1,x:b3,y:b4,leftshoulder:b6,rightshoulder:b7,back:b10,start:b11,guide:b12,leftstick:b13,rightstick:b14,leftx:a0,lefty:a1,rightx:a2,righty:a3,lefttrigger:a5,righttrigger:a4,dpup:h0.1,dpright:h0.2,dpdown:h0.4,dpleft:h0.8,platform:Linux,

@@ -3,6 +3,9 @@
 # Use "$HOME/..." rather than "~/..." (quoted tilde does not expand).
 # Environment variables already set in the terminal take precedence.
 export ISAAC_SIM_ROOT="${ISAAC_SIM_ROOT:-$HOME/isaacsim}"
+# Isaac's bundled ROS libraries (independent of the external tools below).
+export ISAAC_ROS_DISTRO="${ISAAC_ROS_DISTRO:-jazzy}"
+# External ROS installation used by splat_tools.sh.
 export ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 export ROS_DOMAIN_ID="${ROS_DOMAIN_ID:-0}"
 export RMW_IMPLEMENTATION="${RMW_IMPLEMENTATION:-rmw_fastrtps_cpp}"

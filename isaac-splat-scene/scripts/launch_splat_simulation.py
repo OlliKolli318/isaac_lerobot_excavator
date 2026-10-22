@@ -5,6 +5,7 @@ from pathlib import Path
 
 from scene_environment import isaac_root
 from simulation_camera_delivery import configure_camera_delivery
+from simulation_gamepad import configure_gamepad_mappings
 from simulation_transport import configure_simulation_transport
 
 
@@ -25,6 +26,7 @@ def main():
     ros_lib = isaac / 'exts' / 'isaacsim.ros2.core' / os.environ['ROS_DISTRO'] / 'lib'
     os.environ['PATH'] = str(ros_lib) + os.pathsep + os.environ.get('PATH', '')
     configure_simulation_transport()
+    configure_gamepad_mappings(isaac)
     try:
         from isaacsim import SimulationApp
     except ImportError:

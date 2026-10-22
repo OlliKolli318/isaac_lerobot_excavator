@@ -20,7 +20,8 @@ def workspace(tmp_path):
     env = os.environ.copy()
     for key in ('AMENT_PREFIX_PATH', 'COLCON_PREFIX_PATH', 'CONDA_PREFIX',
                 'VIRTUAL_ENV', 'PYTHONEXE', 'PYTHONHOME', 'ROS_DISTRO',
-                'ISAAC_SIM_ROOT', 'ROS_SETUP', 'ROS_LOCAL_SETUP', 'LEROBOT_VENV'):
+                'ISAAC_SIM_ROOT', 'ISAAC_ROS_DISTRO', 'ROS_SETUP',
+                'ROS_LOCAL_SETUP', 'LEROBOT_VENV'):
         env.pop(key, None)
     env['RESULT_FILE'] = str(tmp_path / 'result.json')
     return scene, env
@@ -67,6 +68,45 @@ def test_isaac_wrapper_rejects_system_ros_environment(workspace):
     assert result.returncode == 1
     assert 'fresh terminal' in result.stderr
     assert not Path(env['RESULT_FILE']).exists()
+
+
+@pytest.mark.parametrize('isaac_distro', [None, 'jazzy', 'humble'])
+def test_launchers_select_ros_distributions_independently(workspace, isaac_distro):
+    scene, env = workspace
+    isaac = scene / 'isaac'
+    fake_python(isaac / 'python.sh')
+    expected_distro = isaac_distro or 'jazzy'
+    lib = isaac / f'exts/isaacsim.ros2.core/{expected_distro}/lib'
+    lib.mkdir(parents=True)
+    venv = scene.parent / 'policy venv'
+    fake_python(venv / 'bin/python')
+    (venv / 'bin/activate').write_text('export POLICY_ENV_LOADED=yes\n')
+    ros = scene / 'lyrical.bash'
+    ros.write_text('export ROS_ENV_LOADED=yes\n')
+    settings = (
+        f'export ISAAC_SIM_ROOT="{isaac}"\n'
+        'export ROS_DISTRO=lyrical\n'
+        f'export ROS_SETUP="{ros}"\n'
+        f'export LEROBOT_VENV="{venv}"\n')
+    if isaac_distro:
+        settings += f'export ISAAC_ROS_DISTRO={isaac_distro}\n'
+    (scene / 'splat.local.sh').write_text(settings)
+
+    result = subprocess.run(['bash', str(scene / 'launch_splat_simulation.sh')],
+                            env=env, capture_output=True)
+    assert result.returncode == 7, result.stderr
+    captured = json.loads(Path(env['RESULT_FILE']).read_text())
+    assert captured['env']['ROS_DISTRO'] == expected_distro
+    assert captured['env']['LD_LIBRARY_PATH'].split(os.pathsep)[0] == str(lib)
+    assert 'ROS_ENV_LOADED' not in captured['env']
+
+    result = subprocess.run(['bash', str(scene / 'splat_tools.sh'), 'bridge'],
+                            env=env, capture_output=True)
+    assert result.returncode == 7, result.stderr
+    captured = json.loads(Path(env['RESULT_FILE']).read_text())
+    assert captured['env']['ROS_DISTRO'] == 'lyrical'
+    assert captured['env']['ROS_ENV_LOADED'] == 'yes'
+    assert captured['env']['POLICY_ENV_LOADED'] == 'yes'
 
 
 @pytest.mark.parametrize('runtime_exists', [False, True])

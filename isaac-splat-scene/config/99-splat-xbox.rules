@@ -1,0 +1,5 @@
+# Optional Ubuntu remote-session access for supported Xbox Series S|X devices.
+# Only controller event devices are affected; keyboards/mice are not included.
+# Install in /etc/udev/rules.d/, reload rules, and reconnect the controller.
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_JOYSTICK}=="1", ATTRS{id/vendor}=="045e", ATTRS{id/product}=="0b12", GROUP="plugdev", MODE="0660"
+SUBSYSTEM=="input", KERNEL=="event*", ENV{ID_INPUT_JOYSTICK}=="1", ATTRS{id/vendor}=="045e", ATTRS{id/product}=="0b13", GROUP="plugdev", MODE="0660"

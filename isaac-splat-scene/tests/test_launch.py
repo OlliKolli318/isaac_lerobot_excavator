@@ -16,6 +16,7 @@ def runtime(monkeypatch, tmp_path):
     monkeypatch.setattr(launcher, 'isaac_root', lambda: tmp_path)
     monkeypatch.setattr(launcher, 'configure_simulation_transport', Mock())
     monkeypatch.setattr(launcher, 'configure_camera_delivery', Mock())
+    monkeypatch.setattr(launcher, 'configure_gamepad_mappings', Mock())
     monkeypatch.setattr(launcher.os, 'environ', {})
     app, timeline, context = Mock(), Mock(), Mock()
     app.is_running.side_effect = [True, True, False]
@@ -36,6 +37,8 @@ def runtime(monkeypatch, tmp_path):
 
 
 def test_normal_launch_stops_and_closes(runtime):
+    sys.modules['isaacsim'].SimulationApp.side_effect = lambda *a, **kw: (
+        launcher.configure_gamepad_mappings.assert_called_once() or runtime.app)
     launcher.main()
     runtime.timeline.play.assert_called_once()
     runtime.timeline.stop.assert_called_once()

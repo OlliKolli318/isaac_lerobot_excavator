@@ -90,21 +90,35 @@ nano splat.local.sh
 The settings file can be created before the virtual environment; it only sets
 paths and variables. It is ignored by Git. For the scene, `ISAAC_SIM_ROOT`
 must point to an Isaac Sim installation containing `python.sh` and `apps/`.
-The scene launcher defaults to Isaac's bundled Jazzy ROS libraries. If your
-Isaac installation has those libraries, launch the scene in a fresh terminal
-without system ROS or Conda sourced:
+The Linux scene launcher uses `ISAAC_ROS_DISTRO` (default: `jazzy`) to select
+Isaac's bundled ROS libraries, then sets `ROS_DISTRO` for the Isaac process.
+It does not load the external installation specified by `ROS_SETUP`. Isaac
+Sim 6.0.1 bundles Humble and Jazzy, not Lyrical. Launch the scene in a fresh
+terminal without system ROS or Conda sourced:
 
 ```bash
 cd "$HOME/isaac_excavator_env"
-ROS_DISTRO=jazzy ./isaac-splat-scene/launch_splat_simulation.sh
+./isaac-splat-scene/launch_splat_simulation.sh
 ```
 
-The tools launcher loads ROS and the selected venv. For an external Lyrical
-installation, set `ROS_SETUP=/opt/ros/lyrical/setup.bash` and
-`ROS_DISTRO=lyrical` in `splat.local.sh` (or use the paths for your ROS
-installation). Keep the scene and tools on the same `ROS_DOMAIN_ID` and use
-compatible Fast DDS settings. The launcher wrappers work from any current
-directory; no `colcon` build is needed for the bridge.
+The tools launcher loads the external ROS installation and the selected venv.
+For an external Lyrical installation, use these settings in `splat.local.sh`
+(or adjust the tools' distribution and setup path for your installation):
+
+```bash
+export ISAAC_ROS_DISTRO="${ISAAC_ROS_DISTRO:-jazzy}"
+export ROS_DISTRO="${ROS_DISTRO:-lyrical}"
+export ROS_SETUP="${ROS_SETUP:-/opt/ros/$ROS_DISTRO/setup.bash}"
+```
+
+`ISAAC_ROS_DISTRO` controls the scene's bundled libraries independently of the
+tools' `ROS_DISTRO` and `ROS_SETUP`. No per-command override is needed. Existing
+`splat.local.sh` files without `ISAAC_ROS_DISTRO` also default to Jazzy for the
+scene. To select bundled Humble instead, set `ISAAC_ROS_DISTRO=humble`.
+
+Keep the scene and tools on the same `ROS_DOMAIN_ID` and use compatible Fast
+DDS settings. The launcher wrappers work from any current directory; no
+`colcon` build is needed for the bridge.
 
 Check the installed Python packages and ROS imports:
 
@@ -141,11 +155,126 @@ and provide FFmpeg. Then run `splat_tools.cmd check` from the
 
 ### Start the scene
 
-On Linux, run `./isaac-splat-scene/launch_splat_simulation.sh` from the project
-root. On Windows, run `launch_splat_simulation.cmd` from
+On Linux, run this from the project root in a fresh terminal without system
+ROS or Conda sourced:
+
+```bash
+./isaac-splat-scene/launch_splat_simulation.sh
+```
+
+The launcher selects `ISAAC_ROS_DISTRO` (default: `jazzy`) even when
+`splat.local.sh` defaults to Lyrical for the tools. On Windows, run
+`launch_splat_simulation.cmd` from
 `isaac-splat-scene`. Add `--headless` to run without a GUI; camera rendering
 still requires a compatible GPU. Use `--scene /absolute/path/to/scene.usd` to
 open another scene. Execute the Linux launcher; do not source it.
+
+### Xbox controller input on Linux
+
+Connect the controller before starting Isaac and use the project's scene
+launcher. It automatically loads
+[`config/gamepad_mappings.txt`](isaac-splat-scene/config/gamepad_mappings.txt)
+into Isaac's own GLFW library before controllers are registered. No manual
+mapping step is needed for these included Xbox Series S|X identities:
+
+| Connection | Controller GUID |
+| --- | --- |
+| USB | `030000005e040000120b000009050000` |
+| Bluetooth | `050000005e040000130b000009050000` |
+
+Other Xbox models and firmware revisions may expose different identities and
+layouts. If the controller does not work, follow these checks in order:
+
+1. **Check Linux device detection.** Run:
+
+   ```bash
+   cat /proc/bus/input/devices
+   ls -l /dev/input/js*
+   ```
+
+   Find the Xbox/Microsoft controller block and its `Handlers` line. A `js0`
+   entry corresponds to `/dev/input/js0`; another controller may use `js1`.
+   If the controller is missing from the device list, check Bluetooth pairing
+   or the USB data cable first. A missing `js*` device alone does not prove
+   that Linux cannot detect the controller; inspect the device list too.
+   If `jstest` is installed, run `jstest /dev/input/js0` (adjust the index) and
+   move both sticks and press buttons. Changing values confirm input reaches
+   Linux. GLFW reads `/dev/input/event*`, so a working `js0` test alone is
+   insufficient. Use the controller block's `Handlers` line to find its event
+   device, then check it (replace `event7` with the actual name):
+
+   ```bash
+   test -r /dev/input/event7 && echo "Controller event device is readable" || echo "Controller event device access denied"
+   ```
+
+   Local desktop sessions normally receive event-device access automatically.
+   RDP/remote sessions can lack it while the local seat belongs to the login
+   screen. If access is denied on Ubuntu, the optional
+   [`99-splat-xbox.rules`](isaac-splat-scene/config/99-splat-xbox.rules) grants
+   the `plugdev` group access specifically to the supported USB/Bluetooth Xbox
+   controller event devices. From the project root:
+
+   ```bash
+   id -nG
+   sudo install -m 0644 isaac-splat-scene/config/99-splat-xbox.rules /etc/udev/rules.d/99-splat-xbox.rules
+   sudo udevadm control --reload-rules
+   ```
+
+   Confirm `plugdev` appears in your groups. If it does not, an administrator
+   can add your user with `sudo usermod -aG plugdev "$USER"`; log out and back
+   in afterward so new processes receive that group. Reconnect the controller
+   (USB unplug/replug or Bluetooth disconnect/reconnect), repeat the event-device
+   readability check, and restart Isaac. Other distributions may use different
+   device-access groups. Run Isaac as your normal user. This applies to a
+   controller physically connected to the Isaac computer; forwarding a controller
+   attached to the RDP client is a separate setup.
+
+2. **Capture the Isaac startup messages.** In a fresh terminal without system
+   ROS or Conda sourced, run from the project root:
+
+   ```bash
+   ./isaac-splat-scene/launch_splat_simulation.sh 2>&1 | tee /tmp/splat-controller.log
+   ```
+
+   `Loaded Linux gamepad mappings` confirms the project loaded its mapping
+   file; it does not prove that the connected controller has a matching entry.
+   `Joystick with unknown remapping detected (will be ignored)` means Isaac
+   sees the device but cannot map it. Copy the controller name and the GUID
+   in square brackets from that warning. `No Gamepad!` alone means the graph
+   cannot access its selected gamepad; check the preceding startup messages.
+   A mapping-loader warning such as `Multiple cached windowing plugins found`
+   means the mappings were not loaded and needs investigation first.
+
+3. **Check the graph while simulation is playing.** Open
+   `/World/BucketExcavatorActionGraph` and inspect `outputs:value` on
+   `GamepadAxis0` through `GamepadAxis3` while moving both sticks. These nodes
+   select gamepad index `0`; if multiple controllers are connected, disconnect
+   the others and restart Isaac for a simple single-controller check. If the
+   raw axis values change but the excavator does not move, continue with the
+   bridge/manual-mode instructions below. The controller mapping is already
+   delivering those axis values.
+
+4. **Add a mapping only if the GUID is unsupported.** Look for the exact
+   Linux GUID in the maintained
+   [SDL GameController database](https://github.com/mdqinc/SDL_GameControllerDB/blob/master/gamecontrollerdb.txt),
+   which uses the mapping format GLFW accepts. Verify the axis/button layout
+   against the connected device before adding an entry to
+   `isaac-splat-scene/config/gamepad_mappings.txt`. Keep each mapping on one
+   line, including its GUID and `platform:Linux` field. Do not substitute a new
+   GUID into an existing row without checking its layout: USB and Bluetooth
+   can number sticks, triggers, and buttons differently.
+
+   Close and restart Isaac after editing the file, then repeat the graph check
+   and verify triggers and buttons as well as sticks. If there is no matching
+   entry, report the controller model, connection type, GUID, Linux/Isaac
+   versions, startup warnings, and whether the Linux input test works. A new
+   mapping must be measured and validated for that device. Report these details
+   too if the GUID already matches an included mapping but input still fails.
+
+Windows Xbox controllers normally use GLFW's standard XInput mapping. Linux
+uses device-specific GUID mappings, so the same controller can work on Windows
+while needing an additional mapping on Linux. See the
+[GLFW gamepad mapping documentation](https://www.glfw.org/docs/latest/input_guide.html#gamepad_mapping).
 
 ### Start the bridge
 
@@ -181,10 +310,11 @@ ROS-enabled terminal. Adjust the paths, task, and episode count as needed:
 
 ```bash
 ./isaac-splat-scene/splat_tools.sh record \
-  --robot.type=isaac_excavator --robot.id=splat \
+  --robot.type=isaac_excavator --robot.id=excavator \
   --teleop.type=isaac_excavator_action --teleop.id=gamepad \
   --dataset.repo_id=local/splat_demo --dataset.root="$HOME/data/splat_demo" \
-  --dataset.single_task="Pick up the log" --dataset.num_episodes=10 \
+  --dataset.single_task="Pick up the log and place it in the blue container" 
+  --dataset.num_episodes=10 \
   --dataset.episode_time_s=120 --dataset.fps=30 \
   --dataset.push_to_hub=false
 ```
@@ -203,20 +333,28 @@ mode on the bridge, then run:
 
 ```bash
 ./isaac-splat-scene/splat_tools.sh rollout \
-  --robot.type=isaac_excavator --robot.id=splat \
   --strategy.type=base \
+  --inference.type=rtc \
+  --inference.rtc.execution_horizon=10 \
+  --inference.rtc.max_guidance_weight=10 \
+  --inference.queue_threshold=30 \
+  --robot.type=isaac_excavator --robot.id=excavator \
+  --robot.connect_timeout_s=60 \
   --policy.path=/path/to/checkpoint/pretrained_model \
-  --policy.device=cuda \
-  --task="Pick up the log" \
-  --fps=30 --duration=120 \
-  --display_data=false --use_torch_compile=false \
-  --interpolation_multiplier=1 --return_to_initial_position=false
+  --device=cuda \
+  --task="Pick up the log and place it in the blue container" \
+  --fps=30 --duration=6430 \
+  --return_to_initial_position=false
 ```
+
+This example enables real-time chunking (RTC) with an execution horizon of 10
+and queue threshold of 30. Adjust the checkpoint path and duration as needed;
+the duration is measured in simulation seconds.
 
 The policy process can run on a separate computer from Isaac when both can
 communicate over ROS. Model or tokenizer downloads need network access on the
 first run unless their files are already cached. Use `splat_tools.sh dagger`
-for a DAgger rollout; aggregation is available through
+for a DAgger rollout and change the --strategy.type=dagger; aggregation is available through
 `splat_tools.sh dagger-aggregate`.
 
 ## Available tools
