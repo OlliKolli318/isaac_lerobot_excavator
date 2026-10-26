@@ -35,8 +35,7 @@ simulation and policy workflow:
   its own bundled ROS libraries; the Linux scene launcher defaults to the
   bundled Jazzy libraries. Use a matching ROS domain and compatible DDS setup
   for all running processes.
-- **Python 3.10 or newer**, compatible with the chosen ROS Python packages,
-  plus pip and `venv`.
+- **Python 3.12**, managed with uv to create the .venv, plus pip and ROS Python packages compatible with Python 3.12
 - **LeRobot** with the `smolvla` and `core_scripts` extras, and **FFmpeg** for
   recording and decoding dataset videos.
 
@@ -61,9 +60,12 @@ packages installed by your ROS distribution:
 
 ```bash
 cd "$HOME/isaac_excavator_env"
-python3 -m venv --system-site-packages .venv
-source /opt/ros/YOUR_ROS_DISTRO/setup.bash
+# Install uv using the existing Python
+python3 -m pip install --user uv
+"$HOME/.local/bin/uv" python install 3.10
+"$HOME/.local/bin/uv" venv --python 3.10 --system-site-packages --seed .venv
 source .venv/bin/activate
+source /opt/ros/YOUR_ROS_DISTRO/setup.bash
 python3 -m pip install --upgrade pip
 python3 -m pip install 'lerobot[smolvla,core_scripts]'
 python3 -m pip install -e ./lerobot-isaac-excavator

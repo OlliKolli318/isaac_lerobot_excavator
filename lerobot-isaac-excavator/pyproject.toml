@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "lerobot_robot_isaac_excavator"
 version = "0.1.0"
 description = "LeRobot ROS2 interface for the Isaac excavator simulation."
-requires-python = ">=3.12"
+requires-python = ">=3.10"
 dependencies = [
     "lerobot==0.6.0",
     "numpy==2.2.6",
