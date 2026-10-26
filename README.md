@@ -64,10 +64,10 @@ cd "$HOME/isaac_excavator_env"
 python3 -m venv --system-site-packages .venv
 source /opt/ros/YOUR_ROS_DISTRO/setup.bash
 source .venv/bin/activate
-python -m pip install --upgrade pip
-python -m pip install 'lerobot[smolvla,core_scripts]'
-python -m pip install -e ./lerobot-isaac-excavator
-python -m pip install -e ./kaivuri-control-bridge/src/kaivuri_lerobot_bridge
+python3 -m pip install --upgrade pip
+python3 -m pip install 'lerobot[smolvla,core_scripts]'
+python3 -m pip install -e ./lerobot-isaac-excavator
+python3 -m pip install -e ./kaivuri-control-bridge/src/kaivuri_lerobot_bridge
 ```
 
 Install FFmpeg with your operating system's package manager if it is not
