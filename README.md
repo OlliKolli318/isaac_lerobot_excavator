@@ -62,7 +62,7 @@ packages installed by your ROS distribution:
 ```bash
 cd "$HOME/isaac_excavator_env"
 python3 -m venv --system-site-packages .venv
-source /opt/ros/lyrical/setup.bash
+source /opt/ros/YOUR_ROS_DISTRO/setup.bash
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install 'lerobot[smolvla,core_scripts]'

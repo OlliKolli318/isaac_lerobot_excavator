@@ -14,7 +14,7 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="Kaivuri maintainers",
+    maintainer="Excavator maintainers",
     maintainer_email="olli.kangasniemi@savonia.fi",
     description="Safety-oriented ROS 2 control bridge for the Isaac LeRobot excavator.",
     license="MIT",
