@@ -43,7 +43,7 @@ def recorder():
         LeRobotDataset=object, init_logging=Mock(), make_robot_from_config=lambda _: robot,
         make_teleoperator_from_config=lambda _: teleop,
         combine_feature_dicts=lambda *args: {}, aggregate_pipeline_dataset_features=lambda **kw: {},
-        upstream=NS(create_initial_features=lambda **kw: {}), TIME_FEATURES=('sim_time_ns',),
+        upstream=NS(create_initial_features=lambda **kw: {}), TIME_FEATURES=('state_action_time_ns',),
         _make_dataset=lambda *args: dataset,
         init_keyboard_listener=lambda: (listener, dict(stop_recording=False, exit_early=False, rerecord_episode=False)),
         EpisodeCommandBridge=lambda *args: bridge, VideoEncodingManager=lambda _: ExitStack(),

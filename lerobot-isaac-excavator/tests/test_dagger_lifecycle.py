@@ -40,7 +40,7 @@ def test_dagger_cleanup_releases_all_resources_on_failure(failure):
     ctx = NS(runtime=NS(cfg=cfg), hardware=NS(robot_wrapper=NS(inner=robot)),
              data=NS(dataset_features={}))
     namespace = definitions('simulation_dagger.py', {'run_dagger', '_discard_and_finalize'}, dict(
-        copy=copy, ExitStack=ExitStack, BaseStrategyConfig=NS, TIME_FEATURES=('sim_time_ns',),
+        copy=copy, ExitStack=ExitStack, BaseStrategyConfig=NS, TIME_FEATURES=('state_action_time_ns',),
         build_rollout_context=lambda *args: ctx, _make_dataset=lambda *args: dataset,
         DaggerLink=lambda **kwargs: link, DAggerEvents=NS,
         init_simulation_dagger_keyboard=lambda *args: listener, SimulationDagger=lambda *args: runner))

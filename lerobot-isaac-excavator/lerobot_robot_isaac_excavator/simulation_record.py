@@ -3,7 +3,7 @@ import numpy as np
 from lerobot.utils.feature_utils import build_dataset_frame
 from .simulation_time import MissingSample, SimRate
 
-TIME_FEATURES = ("clock_time_ns", "sim_time_ns", "camera2_time_ns", "camera3_time_ns")
+TIME_FEATURES = ("clock_time_ns", "state_action_time_ns", "camera2_time_ns", "camera3_time_ns")
 
 
 def simulation_record_loop(robot, events, fps, dataset, control_time_s, single_task,

@@ -20,7 +20,7 @@ def load_functions(filename, names, namespace):
     return namespace
 
 
-TIME_FEATURES = ("clock_time_ns", "sim_time_ns", "camera2_time_ns", "camera3_time_ns")
+TIME_FEATURES = ("clock_time_ns", "state_action_time_ns", "camera2_time_ns", "camera3_time_ns")
 DEFAULT_FEATURES = {
     key: {"dtype": "float32" if key == "timestamp" else "int64", "shape": (1,), "names": None}
     for key in ("timestamp", "frame_index", "episode_index", "index", "task_index")
