@@ -35,10 +35,10 @@ class IsaacExcavatorConfig(RobotConfig):
     )
     action_names: list[str] = field(
         default_factory=lambda: [
-            "left_stick_x_slew",
-            "left_stick_y_arm",
-            "right_stick_x_bucket",
-            "right_stick_y_boom",
+            "revolute_carriage",
+            "revolute_tilt",
+            "revolute_tool",
+            "revolute_lift",
             "claw_closed",
         ]
     )

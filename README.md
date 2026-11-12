@@ -22,22 +22,67 @@ consistent across all three components.
 
 ## Requirements
 
-Install these external programs once on the computer that will run the
-simulation and policy workflow:
+The recording, rollout, DAgger, and training tools require **CPython 3.12.x**
+and **ROS 2 Python bindings built for CPython 3.12 on the same OS and
+architecture**. These tools import ROS, OpenCV, and LeRobot into one Python
+process. Installing them into separate environments does not make the current
+launcher compatible.
+
+### Required OS, ROS 2, and Python combination
+
+| Operating system | External ROS 2 installation | Python used by ROS bindings | Use for this workflow |
+| --- | --- | --- | --- |
+| **Ubuntu 24.04 LTS (Noble)** | **Jazzy**, official Ubuntu packages | **3.12** | Recommended Linux setup. |
+| **Windows 11, x86_64** | **Lyrical**, Windows binaries and their matching Pixi environment (VS2022 build) | **3.12** | Windows setup used by this project. |
+| Ubuntu 22.04 LTS (Jammy) | Humble, official Ubuntu packages | 3.10 | Incompatible with the pinned LeRobot 0.6.0 in the same process. |
+| Ubuntu 26.04 LTS (Resolute) | Lyrical, official Ubuntu packages | 3.14 | Does not provide the Python 3.12 bindings required by this setup. |
+| Ubuntu 24.04 LTS (Noble) | Lyrical, built from source | 3.12 | Upstream Tier 3; requires a source build, outside the standard setup below. |
+
+ROS binary packages are specific to the OS release and Python ABI. Jazzy's
+Ubuntu packages target **24.04**, not 22.04. Lyrical targets **Windows 11** on
+Windows; its primary Ubuntu binary target is **26.04**, with a different Python
+version. A ROS distribution name alone does not establish Python compatibility.
+See the upstream [ROS platform matrix (REP 2000)](https://github.com/ros-infrastructure/rep/blob/master/rep-2000.rst),
+[Jazzy Ubuntu installation guide](https://github.com/ros2/ros2_documentation/blob/jazzy/source/Installation/Ubuntu-Install-Debs.rst),
+and [Lyrical platform and dependency requirements](https://github.com/ros2/ros2_documentation/blob/lyrical/source/Releases/lyrical/supported-platforms.rst).
+
+Install these external programs in the OS/environment that runs each process:
 
 - **NVIDIA Isaac Sim 6.0.1** with NuRec volume rendering support and the ROS 2
   Bridge extension enabled. `isaac-splat-scene/env.usd` is the active scene;
   keep it with the `isaac-splat-scene/assets/` directory.
 - **A GPU supported by Isaac Sim and a compatible NVIDIA driver.** Headless
   mode still renders cameras and needs a GPU.
-- **ROS 2 with Python bindings and Fast DDS** (`rmw_fastrtps_cpp`). The external
-  ROS environment used to develop the project is ROS 2 Lyrical. Isaac Sim uses
-  its own bundled ROS libraries; the Linux scene launcher defaults to the
-  bundled Jazzy libraries. Use a matching ROS domain and compatible DDS setup
-  for all running processes.
-- **Python 3.12**, managed with uv to create the .venv, plus pip and ROS Python packages compatible with Python 3.12
-- **LeRobot** with the `smolvla` and `core_scripts` extras, and **FFmpeg** for
-  recording and decoding dataset videos.
+- **ROS 2 with Python 3.12 bindings and Fast DDS** (`rmw_fastrtps_cpp`), using
+  a compatible OS/ROS combination from the table above. Source its setup script
+  before running the tools. Required ROS packages include `rclpy`, `sensor_msgs`,
+  `rosgraph_msgs`, `std_msgs`, and `std_srvs`.
+- **CPython 3.12.x**, plus pip. [uv](https://docs.astral.sh/uv/getting-started/installation/)
+  can install Python with `uv python install 3.12` and create virtual
+  environments. For Ubuntu's ROS packages, use uv with the **system interpreter**
+  as shown below; Windows tools use the matching **Pixi interpreter**.
+- **LeRobot 0.6.0** with the `smolvla` and `core_scripts` extras, **NumPy
+  2.2.6** (the adapter's current dependency pins), and **FFmpeg** for recording
+  and decoding dataset videos. Published [LeRobot 0.6.0 requires Python
+  >=3.12](https://pypi.org/project/lerobot/0.6.0/); Python 3.10/3.11 cannot run
+  this dependency set.
+
+`uv python install 3.12` installs an interpreter; it does not install or rebuild
+ROS. `--system-site-packages` exposes packages from the selected base
+interpreter; it does not convert Python 3.10 compiled extensions into Python
+3.12 extensions. A uv-managed Python also does not automatically inherit
+Ubuntu's `/usr/lib/python3/dist-packages`. Do not replace Ubuntu's system
+Python. See [uv's interpreter selection documentation](https://docs.astral.sh/uv/concepts/python-versions/).
+
+Isaac Sim runs in a separate process with its own Python and bundled ROS
+libraries. The external tools' Python requirement does not require replacing
+Isaac's interpreter. For a single x86_64 computer running both processes, use
+Ubuntu 24.04 or Windows 11; see [Isaac Sim's OS requirements](https://docs.isaacsim.omniverse.nvidia.com/6.0.0/installation/requirements.html).
+The Linux scene launcher defaults to bundled Jazzy. Using external Lyrical
+with Isaac's Humble/Jazzy bridge crosses ROS distributions: matching domain IDs
+and DDS settings is necessary, but does not guarantee interoperability. Verify
+camera/state reception, clock, services, and actions before rollout. The
+matching Jazzy setup on Ubuntu 24.04 avoids that distribution mismatch.
 
 For GPU policy inference or training, also use a supported NVIDIA GPU,
 compatible driver, and CUDA-enabled PyTorch build. Training additionally needs
@@ -47,27 +92,38 @@ development headers; prebuilt wheels do not need these tools.
 
 The adapter requires a LeRobot release that provides
 `lerobot.rollout.RolloutConfig`, `build_rollout_context`, and
-`lerobot.utils.feature_utils`. The declared minimum version alone does not
-guarantee those APIs; use a compatible release or source checkout, preferably
-the revision used to train your checkpoint.
+`lerobot.utils.feature_utils`. Use the pinned release and run the import check
+below. If your checkpoint needs a source checkout, record its exact revision
+and verify these APIs; a version label alone does not establish compatibility.
 
 ## Set up on Linux
 
-The examples assume this repository is at `~/isaac_excavator_env`. Run the
-ROS and LeRobot tools from a Python virtual environment that can see the ROS
-Python packages. Create it with `--system-site-packages` so it can use the ROS
-packages installed by your ROS distribution:
+Use **Ubuntu 24.04 LTS + ROS 2 Jazzy** for this setup. In a container, the
+container's OS release and ROS packages must match this combination even if the
+host uses another OS. Preserve an existing Ubuntu 22.04/Humble container and
+create a separate 24.04/Jazzy container for these tools.
+
+First install Jazzy using the upstream Ubuntu installation guide linked above
+(including its ROS apt repository configuration). Then install the runtime
+packages and create the venv. The examples assume this repository is at
+`~/isaac_excavator_env`. Use a fresh tools terminal, and use an unused `.venv`
+path if an older environment already exists:
 
 ```bash
+sudo apt update
+sudo apt install python3-venv ffmpeg ros-jazzy-ros-base ros-jazzy-rmw-fastrtps-cpp \
+  ros-jazzy-sensor-msgs ros-jazzy-rosgraph-msgs ros-jazzy-std-msgs ros-jazzy-std-srvs
+# Install uv (or use an existing installation).
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 cd "$HOME/isaac_excavator_env"
-# Install uv using the existing Python
-python3 -m pip install --user uv
-"$HOME/.local/bin/uv" python install 3.10
-"$HOME/.local/bin/uv" venv --python 3.10 --system-site-packages --seed .venv
+/usr/bin/python3 --version  # Must report 3.12.x on Ubuntu 24.04.
+/usr/bin/python3 -c 'import sys; assert sys.version_info[:2] == (3, 12), sys.version'
+source /opt/ros/jazzy/setup.bash
+"$HOME/.local/bin/uv" venv --python /usr/bin/python3 --system-site-packages --seed .venv
 source .venv/bin/activate
-source /opt/ros/YOUR_ROS_DISTRO/setup.bash
-python3 -m pip install --upgrade pip
-python3 -m pip install 'lerobot[smolvla,core_scripts]'
+python -m pip install --upgrade pip
+python -m pip install 'lerobot[smolvla,core_scripts]==0.6.0'
 python3 -m pip install -e ./lerobot-isaac-excavator
 python3 -m pip install -e ./kaivuri-control-bridge/src/kaivuri_lerobot_bridge
 ```
@@ -104,19 +160,20 @@ cd "$HOME/isaac_excavator_env"
 ```
 
 The tools launcher loads the external ROS installation and the selected venv.
-For an external Lyrical installation, use these settings in `splat.local.sh`
-(or adjust the tools' distribution and setup path for your installation):
+Use these settings in `splat.local.sh` for the Ubuntu 24.04/Jazzy setup; these
+match the current Linux template and launcher defaults:
 
 ```bash
 export ISAAC_ROS_DISTRO="${ISAAC_ROS_DISTRO:-jazzy}"
-export ROS_DISTRO="${ROS_DISTRO:-lyrical}"
+export ROS_DISTRO="${ROS_DISTRO:-jazzy}"
 export ROS_SETUP="${ROS_SETUP:-/opt/ros/$ROS_DISTRO/setup.bash}"
 ```
 
 `ISAAC_ROS_DISTRO` controls the scene's bundled libraries independently of the
 tools' `ROS_DISTRO` and `ROS_SETUP`. No per-command override is needed. Existing
 `splat.local.sh` files without `ISAAC_ROS_DISTRO` also default to Jazzy for the
-scene. To select bundled Humble instead, set `ISAAC_ROS_DISTRO=humble`.
+scene. Selecting `ISAAC_ROS_DISTRO=humble` only changes Isaac's bundled
+libraries; the external tools still require ROS bindings built for Python 3.12.
 
 Keep the scene and tools on the same `ROS_DOMAIN_ID` and use compatible Fast
 DDS settings. The launcher wrappers work from any current directory; no
@@ -126,10 +183,24 @@ Check the installed Python packages and ROS imports:
 
 ```bash
 cd "$HOME/isaac_excavator_env"
+python -c "import os, sys, rclpy; from rclpy.impl.implementation_singleton import rclpy_implementation; print(sys.executable, sys.version); print('ROS_DISTRO:', os.environ.get('ROS_DISTRO')); print(rclpy_implementation.__file__)"
 ./isaac-splat-scene/splat_tools.sh check
 ```
 
+Confirm Python 3.12, `ROS_DISTRO=jazzy`, and a Python 3.12 `rclpy` extension.
+An empty `ROS_DISTRO` means the shell is not configured; setting that variable
+alone does not source ROS libraries. The `check` command additionally verifies
+ROS, OpenCV, LeRobot, and project imports together in the tools interpreter.
+It does not test communication with the running scene.
+
 ## Set up on Windows
+
+Use **Windows 11 x86_64 + ROS 2 Lyrical Windows binaries built for Python
+3.12**, with the matching Pixi dependency environment. Upstream lists VS2022
+for this ROS build; retain its matching compiler/runtime dependencies. The
+working development environment uses Python 3.12.3. A Pixi environment named
+`pixi_ros2_lyrical` is not sufficient evidence of the installed ROS version:
+verify its ROS setup and imports below.
 
 Install Isaac Sim with NuRec and the ROS 2 Bridge enabled, then copy
 `isaac-splat-scene/splat.local.cmd.example` to `splat.local.cmd` and set
@@ -139,19 +210,33 @@ libraries.
 The tools launcher also needs Pixi and a ROS-enabled Pixi manifest configured
 as `PIXI_MANIFEST`. This repository does not include that machine-specific
 manifest. Copy `splat.local.cmd.example` to `splat.local.cmd` and set both
-`ISAAC_SIM_ROOT` and `PIXI_MANIFEST`. From the project root, install the Python
-packages in the manifest's environment:
+`ISAAC_SIM_ROOT` and `PIXI_MANIFEST`. The Pixi environment must load the actual
+ROS installation's `local_setup.bat` through its activation setup, or you must
+call that script in the terminal before running the tools. `PIXI_MANIFEST`
+alone does not source ROS. From the project root, install the Python packages
+in the manifest's environment:
 
 ```bat
 call isaac-splat-scene\splat.local.cmd
-pixi run --manifest-path "%PIXI_MANIFEST%" python -m pip install "lerobot[smolvla,core_scripts]"
+pixi run --manifest-path "%PIXI_MANIFEST%" python -m pip install "lerobot[smolvla,core_scripts]==0.6.0"
 pixi run --manifest-path "%PIXI_MANIFEST%" python -m pip install -e .\lerobot-isaac-excavator
 pixi run --manifest-path "%PIXI_MANIFEST%" python -m pip install -e .\kaivuri-control-bridge\src\kaivuri_lerobot_bridge
 ```
 
 The manifest's environment must expose the ROS Python modules, use Fast DDS,
-and provide FFmpeg. Then run `splat_tools.cmd check` from the
-`isaac-splat-scene` folder.
+and provide FFmpeg. Verify the actual interpreter, sourced ROS distribution,
+and compiled binding from the same project-root terminal:
+
+```bat
+pixi run --manifest-path "%PIXI_MANIFEST%" python -c "import os, sys, rclpy; from rclpy.impl.implementation_singleton import rclpy_implementation; from importlib.metadata import version; print(sys.executable, sys.version); print('ROS_DISTRO:', os.environ.get('ROS_DISTRO')); print(rclpy_implementation.__file__); print('LeRobot:', version('lerobot'))"
+```
+
+Expect Python 3.12.x, `ROS_DISTRO=lyrical`, a `cp312` ROS binding, and LeRobot
+0.6.0. Then run `splat_tools.cmd check` from the `isaac-splat-scene` folder.
+Keep Python and ROS in this Pixi environment: installing another Python with
+uv does not connect it to the Pixi/ROS DLLs. For an intentionally separate
+Python setup, uv can install 3.12, but all ROS binary dependencies still need
+to match that interpreter and OS.
 
 ## Run the project
 
@@ -164,8 +249,8 @@ ROS or Conda sourced:
 ./isaac-splat-scene/launch_splat_simulation.sh
 ```
 
-The launcher selects `ISAAC_ROS_DISTRO` (default: `jazzy`) even when
-`splat.local.sh` defaults to Lyrical for the tools. On Windows, run
+The launcher selects `ISAAC_ROS_DISTRO` (default: `jazzy`) independently of
+the external tools' `ROS_DISTRO` and `ROS_SETUP`. On Windows, run
 `launch_splat_simulation.cmd` from
 `isaac-splat-scene`. Add `--headless` to run without a GUI; camera rendering
 still requires a compatible GPU. Use `--scene /absolute/path/to/scene.usd` to
