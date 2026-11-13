@@ -397,12 +397,16 @@ ROS-enabled terminal. Adjust the paths, task, and episode count as needed:
 
 ```bash
 ./isaac-splat-scene/splat_tools.sh record \
-  --robot.type=isaac_excavator --robot.id=excavator \
-  --teleop.type=isaac_excavator_action --teleop.id=gamepad \
-  --dataset.repo_id=local/splat_demo --dataset.root="$HOME/data/splat_demo" \
-  --dataset.single_task="Pick up the log and place it in the blue container" 
+  --robot.type=isaac_excavator \
+  --robot.id=excavator \
+  --teleop.type=isaac_excavator_action \
+  --teleop.id=gamepad \
+  --dataset.repo_id=local/splat_demo \
+  --dataset.root="$HOME/data/splat_demo" \
+  --dataset.single_task="Pick up the log and place it in the blue container" \
   --dataset.num_episodes=10 \
-  --dataset.episode_time_s=120 --dataset.fps=30 \
+  --dataset.episode_time_s=120 \
+  --dataset.fps=30 \
   --dataset.push_to_hub=false
 ```
 
