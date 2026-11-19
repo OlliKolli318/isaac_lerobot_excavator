@@ -182,7 +182,9 @@ class IsaacExcavator(Robot):
     def _sample_callback(self, msg):
         import math
         expected = ["state/" + k for k in self._state_keys] + ["action/" + k for k in self._action_keys]
-        print(f"Eetu!:{expected}\n")
+        print(f"Expected: {expected}")
+        print(f"Received: {msg.name}")
+        print(f"Position: {msg.position}")
         if list(msg.name) != expected or len(msg.position) != 10 or not all(math.isfinite(v) for v in msg.position):
             logger.warning("Rejecting sim_sample with incorrect names, dimensions, or non-finite values.")
             return
