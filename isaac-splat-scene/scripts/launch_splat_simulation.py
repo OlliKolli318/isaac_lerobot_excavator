@@ -25,7 +25,7 @@ def main():
     os.environ.setdefault('RMW_IMPLEMENTATION', 'rmw_fastrtps_cpp')
     ros_lib = isaac / 'exts' / 'isaacsim.ros2.core' / os.environ['ROS_DISTRO'] / 'lib'
     os.environ['PATH'] = str(ros_lib) + os.pathsep + os.environ.get('PATH', '')
-    configure_simulation_transport()
+    # configure_simulation_transport()
     configure_gamepad_mappings(isaac)
     try:
         from isaacsim import SimulationApp

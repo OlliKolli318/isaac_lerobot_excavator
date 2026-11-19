@@ -68,3 +68,4 @@ isaac-splat-scene/simulation_dagger_graph.py
 isaac-splat-scene/simulation_graph.py
 isaac-splat-scene/splat_log_relocator.py
 isaac-splat-scene/splat_action_mux.py
+isaac-splat-scene/config/fastdds_tcp_client.xml
