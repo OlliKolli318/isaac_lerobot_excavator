@@ -45,8 +45,16 @@ class ControlBridge(Node):
         self.declare_parameter("stamped_input_topic", "/kaivuri/control/policy_action_stamped")
         self.declare_parameter("stamped_scene_topic", "/kaivuri/policy_action_stamped")
         self.declare_parameter("transport_timeout_s", 10.0)
-        self.declare_parameter("action_names", ["left_stick_x_slew", "left_stick_y_arm",
-                                                "right_stick_x_bucket", "right_stick_y_boom", "claw_closed"])
+        self.declare_parameter(
+            "action_names",
+            [
+                "revolute_carriage",
+                "revolute_tilt",
+                "revolute_tool",
+                "revolute_lift",
+                "claw_closed",
+            ],
+        )
         self.declare_parameter("axis_count", 4)
         self.declare_parameter("safe_action", [0.0, 0.0, 0.0, 0.0, 1.0])
         self.declare_parameter("simulation_mode_topic", "/kaivuri/simulation_mode")
@@ -192,8 +200,15 @@ class ControlBridge(Node):
             expected_run = self._run_id + ("#" + dagger if dagger else "")
             if dagger and decode_control(dagger)[2] != "autonomous":
                 return
-            if list(msg.name) != names or msg.header.frame_id != expected_run:
-                raise InvalidAction("stamped action names or simulation run ID do not match")
+            if list(msg.name) != names:
+                raise InvalidAction(
+                    f"names mismatch: received={list(msg.name)!r}, expected={names!r}"
+                )
+
+            if msg.header.frame_id != expected_run:
+                raise InvalidAction(
+                    f"run ID mismatch: received={msg.header.frame_id!r}, expected={expected_run!r}"
+                )
             if ns <= self._last_packet_ns or not -0.1 <= ns / 1e9 - self._sim_time <= 1.0:
                 raise InvalidAction("action is out of order, expired, or too far in the future")
             if not self._enabled or not self._policy_mode:
