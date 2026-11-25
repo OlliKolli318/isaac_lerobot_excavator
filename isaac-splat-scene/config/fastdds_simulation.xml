@@ -6,8 +6,8 @@
     <transport_descriptor>
       <transport_id>KaivuriBufferedUdp</transport_id>
       <type>UDPv4</type>
-      <sendBufferSize>16777216</sendBufferSize>
-      <receiveBufferSize>16777216</receiveBufferSize>
+      <sendBufferSize>8388608</sendBufferSize>
+      <receiveBufferSize>8388608</receiveBufferSize>
     </transport_descriptor>
   </transport_descriptors>
   <participant profile_name="kaivuri_buffered_udp" is_default_profile="true">

@@ -22,9 +22,16 @@ def configure_simulation_transport(environ=None):
     profile = Path(requested).expanduser().resolve() if requested else DEFAULT_PROFILE
     if not profile.is_file():
         raise FileNotFoundError(f"Simulation Fast DDS profile not found: {profile}")
-    # Setting both aliases loads the same XML twice in this Fast DDS version,
-    # producing duplicate transport/profile errors. Use only the current name.
-    environ.pop("FASTRTPS_DEFAULT_PROFILES_FILE", None)
-    environ["FASTDDS_DEFAULT_PROFILES_FILE"] = str(profile)
-    print(f"Simulation ROS transport profile (process-local): {profile}", flush=True)
+    # The ROS distributions below ship Fast DDS 2, including Isaac's bundled
+    # Jazzy runtime. That library does not read FASTDDS_DEFAULT_PROFILES_FILE.
+    # Fast DDS 3 uses the newer name; select only one alias to avoid duplicate
+    # profile loading by middleware that also supports the legacy name.
+    legacy_distros = {"foxy", "galactic", "humble", "iron", "jazzy"}
+    variable = ("FASTRTPS_DEFAULT_PROFILES_FILE"
+                if environ.get("ROS_DISTRO", "").strip().lower() in legacy_distros
+                else "FASTDDS_DEFAULT_PROFILES_FILE")
+    for alias in ("FASTRTPS_DEFAULT_PROFILES_FILE", "FASTDDS_DEFAULT_PROFILES_FILE"):
+        environ.pop(alias, None)
+    environ[variable] = str(profile)
+    print(f"Simulation ROS transport profile (process-local, {variable}): {profile}", flush=True)
     return profile

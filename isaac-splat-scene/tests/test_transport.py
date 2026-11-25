@@ -15,6 +15,20 @@ def test_default_profile_and_alias_cleanup():
     assert root.find('.//dds:type', ns).text == 'UDPv4'
 
 
+@pytest.mark.parametrize('distro,variable', [
+    ('jazzy', 'FASTRTPS_DEFAULT_PROFILES_FILE'),
+    ('humble', 'FASTRTPS_DEFAULT_PROFILES_FILE'),
+    ('lyrical', 'FASTDDS_DEFAULT_PROFILES_FILE'),
+    ('kilted', 'FASTDDS_DEFAULT_PROFILES_FILE'),
+])
+def test_profile_variable_matches_ros_middleware_version(distro, variable):
+    environ = {'ROS_DISTRO': distro,
+               'FASTRTPS_DEFAULT_PROFILES_FILE': 'old.xml',
+               'FASTDDS_DEFAULT_PROFILES_FILE': 'new.xml'}
+    configure_simulation_transport(environ)
+    assert environ == {'ROS_DISTRO': distro, variable: str(DEFAULT_PROFILE)}
+
+
 @pytest.mark.parametrize('override', [
     {'KAIVURI_FASTDDS_PROFILE': ' InHerIt '}, {'RMW_IMPLEMENTATION': 'rmw_cyclonedds_cpp'}])
 def test_inherited_or_other_transport_is_unchanged(override):
